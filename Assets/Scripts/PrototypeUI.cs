@@ -88,8 +88,11 @@ public sealed class PrototypeUI : MonoBehaviour
         }
         else if (pausePage.activeSelf)
         {
-            if (keyboard.escapeKey.wasPressedThisFrame || keyboard.enterKey.wasPressedThisFrame)
+            if (keyboard.enterKey.wasPressedThisFrame ||
+                keyboard.numpadEnterKey.wasPressedThisFrame)
+            {
                 owner.ResumeGame();
+            }
         }
         else if (resultPage.activeSelf && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
             ShowMainPage();
@@ -230,17 +233,26 @@ public sealed class PrototypeUI : MonoBehaviour
         targetGuideRect.gameObject.SetActive(false);
     }
 
+
     private void BuildPausePage()
     {
         pausePage = MakePage("Duraklatma", new Color32(7, 15, 25, 238));
-        AddText(pausePage.transform, "Başlık", "Tatbikat duraklatıldı", new Vector2(0.22f, 0.65f), new Vector2(0.78f, 0.80f),
+
+        AddText(pausePage.transform, "Başlık", "OYUN DURAKLATILDI",
+            new Vector2(0.22f, 0.68f), new Vector2(0.78f, 0.82f),
             42, Color.white, TextAnchor.MiddleCenter);
-        AddButton(pausePage.transform, "Devam", "DEVAM ET", new Vector2(0.38f, 0.48f), new Vector2(0.62f, 0.59f),
+
+        AddButton(pausePage.transform, "Devam", "Oyuna Devam Et",
+            new Vector2(0.35f, 0.49f), new Vector2(0.65f, 0.59f),
             true, owner.ResumeGame);
-        AddButton(pausePage.transform, "Baştan", "BAŞTAN BAŞLAT", new Vector2(0.38f, 0.33f), new Vector2(0.62f, 0.44f),
+
+        AddButton(pausePage.transform, "Yeniden Başlat", "Yeniden Başlat",
+            new Vector2(0.35f, 0.34f), new Vector2(0.65f, 0.44f),
             false, owner.RestartToMenu);
-        AddButton(pausePage.transform, "Ana Menü", "ANA MENÜ", new Vector2(0.38f, 0.18f), new Vector2(0.62f, 0.29f),
-            false, owner.RestartToMenu);
+
+        AddButton(pausePage.transform, "Oyundan Çık", "Oyundan Çık",
+            new Vector2(0.35f, 0.19f), new Vector2(0.65f, 0.29f),
+            false, owner.QuitGame);
     }
 
     private void BuildResultPage()
@@ -351,9 +363,12 @@ public sealed class PrototypeUI : MonoBehaviour
     public void ShowPause()
     {
         SetPages(pausePage);
+
+        pausePage.transform.SetAsLastSibling();
+        canvas.sortingOrder = 100;
+
         owner.SetPlayerControls(false);
     }
-
     public void ShowResults(int score, string review)
     {
         resultTitle.text = "Tatbikat tamamlandı";
