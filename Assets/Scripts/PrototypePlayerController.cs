@@ -627,17 +627,28 @@ public sealed class PrototypePlayerController : MonoBehaviour
         if (!controlsEnabled)
             return;
 
-        Cursor.lockState = hasFocus ? CursorLockMode.Locked : CursorLockMode.None;
-        Cursor.visible = !hasFocus;
+        if (hasFocus)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
+        else
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
     }
-
     private PrototypeInteractable FindLookTarget()
     {
         if (playerCamera == null)
             return null;
 
-        Ray ray = new Ray(playerCamera.transform.position, playerCamera.transform.forward);
-        if (Physics.Raycast(ray, out RaycastHit hit, interactionDistance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+        Ray ray = new Ray(
+            playerCamera.transform.position,
+            playerCamera.transform.forward
+        );
+
+        if (Physics.Raycast(ray, out RaycastHit hit, interactionDistance))
             return hit.collider.GetComponentInParent<PrototypeInteractable>();
 
         return null;
