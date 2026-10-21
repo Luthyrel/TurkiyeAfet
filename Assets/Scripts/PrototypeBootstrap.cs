@@ -93,7 +93,13 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         CreateBox("Güney Duvarı", new Vector3(0f, 1.55f, -4.55f), new Vector3(14f, 3.1f, 0.25f), wallMat);
         CreateBox("Doğu Duvarı", new Vector3(7f, 1.55f, 1f), new Vector3(0.25f, 3.1f, 11f), wallMat);
         CreateBox("Batı Duvarı Altı", new Vector3(-7f, 1.55f, -3.8f), new Vector3(0.25f, 3.1f, 1.5f), wallMat);
-        CreateBox("Batı Duvarı Üstü", new Vector3(-7f, 1.55f, 2.55f), new Vector3(0.25f, 3.1f, 8f), wallMat);
+        CreateBox("Batı Duvarı Üstü", new Vector3(-7f, 1.55f, 2.50f), new Vector3(0.25f, 3.1f, 8f), wallMat);
+        CreateBox(
+            "Kapı Üstü Duvar",
+            new Vector3(-7f, 2.57f, -2.3f),
+            new Vector3(0.25f, 1.06f, 1.62f),
+            wallMat
+        );
 
         CreateBox("Dış Güvenli Yürüyüş Alanı", new Vector3(-9.8f, -0.14f, -2.3f), new Vector3(5.8f, 0.28f, 4.5f), outsideMat);
         CreateBox("Toplanma Alanı İşareti", new Vector3(-11.1f, 0.025f, -2.3f), new Vector3(1.3f, 0.04f, 1.4f),
