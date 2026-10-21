@@ -297,6 +297,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         RefreshHud();
     }
 
+
     public void RegisterHoldInput()
     {
         if (!IsShaking || player == null)
@@ -307,13 +308,19 @@ public sealed class PrototypeScenario : MonoBehaviour
         {
             if (!safeActionComplete)
                 holdTimer = 0f;
+
+            Debug.Log($"Tutunma başarısız: Holding={player.IsHoldingTable}, Crouched={player.IsCrouched}, SafeZone={player.IsInSafeZone(HoldZonePosition, HoldZoneRadius)}, Timer={holdTimer:F2}");
             return;
         }
 
         if (!player.IsHoldPoseAligned)
+        {
+            Debug.Log($"Tutunma hizası başarısız. Timer={holdTimer:F2}");
             return;
+        }
 
         holdTimer = Mathf.Min(RequiredHoldDuration, holdTimer + Time.deltaTime);
+        Debug.Log($"Tutunma sayacı: {holdTimer:F2}/{RequiredHoldDuration:F2}");
 
         if (!safeActionComplete && holdTimer >= RequiredHoldDuration)
         {
@@ -323,6 +330,7 @@ public sealed class PrototypeScenario : MonoBehaviour
             RefreshHud();
         }
     }
+
 
     private void Update()
     {
@@ -358,7 +366,6 @@ public sealed class PrototypeScenario : MonoBehaviour
             }
         }
     }
-
     private void EndEarthquake()
     {
         CurrentPhase = Phase.Aftershock;
@@ -366,20 +373,25 @@ public sealed class PrototypeScenario : MonoBehaviour
         player.EndTableHold();
         player.SetCrouched(false);
         bootstrap.SetHoldZoneVisible(false);
+
         if (!safeActionComplete)
-            bootstrap.ShowNotice("Sarsıntı bitti. Bu denemede güvenli bölgede çömelip masaya 4 saniye tutunamadın. Sonraki denemede ışıklı halkaya gir, C ile çök ve E ile tutun.");
+        {
+            bootstrap.ShowNotice("Sarsıntı bitti. 4 saniye boyunca güvenli pozisyonda tutunamadığın için 100 puan kaybettin.");
+        }
         else
+        {
             bootstrap.ShowNotice("Sarsıntı durdu. Önce çevreni kontrol et; gaz kokusu varsa vanayı güvenliyse kapat, kapı ve pencereleri aç ve elektrik düğmelerine dokunmadan çık.");
+        }
+
         RefreshHud();
     }
-
     private void FinishScenario()
     {
         if (CurrentPhase == Phase.Completed)
             return;
 
         CurrentPhase = Phase.Completed;
-        Score += 150;
+        Score += 100;
         ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.SelectedProvince : null;
         int plateCode = province != null ? province.plateCode : 6;
         string completedKey = ProvinceManager.ProgressKey("TurkiyeAfet.Deprem.Completed", plateCode);
