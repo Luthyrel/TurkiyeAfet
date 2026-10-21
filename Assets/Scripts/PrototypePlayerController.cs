@@ -67,19 +67,41 @@ public sealed class PrototypePlayerController : MonoBehaviour
             return false;
         }
     }
+
+
     public bool IsHoldPoseAligned
     {
         get
         {
             Vector3 offset = transform.position - holdPosition;
             offset.y = 0f;
+
             Vector3 toTable = tablePosition - transform.position;
             toTable.y = 0f;
-            return holdingTable && offset.magnitude <= 0.10f
+
+            float distance = offset.magnitude;
+            float angle = toTable.sqrMagnitude > 0.001f
+                ? Vector3.Angle(transform.forward, toTable)
+                : 999f;
+
+            bool aligned = holdingTable
+                && distance <= 0.35f
                 && toTable.sqrMagnitude > 0.001f
-                && Vector3.Angle(transform.forward, toTable) <= 8f;
+                && angle <= 80f;
+
+            if (holdingTable && !aligned)
+            {
+                Debug.Log(
+                    $"Tutunma hizası: Mesafe={distance:F2}, " +
+                    $"Açı={angle:F1}, " +
+                    $"Tutunuyor={holdingTable}"
+                );
+            }
+
+            return aligned;
         }
     }
+
     public Vector3 CameraPosition => playerCamera != null ? playerCamera.transform.position : transform.position;
 
     public void Initialize(PrototypeScenario activeScenario, Vector3 spawnPosition, float yaw)
