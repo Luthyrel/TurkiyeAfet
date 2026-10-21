@@ -32,7 +32,7 @@ public class TableHoldIK : MonoBehaviour
 
         Vector3 table = player.TablePosition;
 
-        Vector3 leftHand = table + new Vector3(-0.68f, 0.48f, -0.53f);
+        Vector3 leftHand = table + new Vector3(-1.70f, 0.55f, -0.95f);
         Vector3 rightHand = table + new Vector3(-1.08f, 0.60f, -0.53f);
 
         animator.SetIKPositionWeight(AvatarIKGoal.LeftHand, 1f);
