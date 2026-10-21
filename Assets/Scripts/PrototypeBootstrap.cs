@@ -151,7 +151,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private void BuildHoldZoneMarker()
     {
         holdZoneMarker = new GameObject("Çök-Kapan-Tutun Güvenli Bölgesi");
-        holdZoneMarker.transform.position = safeTablePosition + new Vector3(0f, 0f, -0.10f) + Vector3.up * 0.035f;
+        holdZoneMarker.transform.position = safeTablePosition + new Vector3(-0.35f, 0f, -0.15f) + Vector3.up * 0.035f;
 
         GameObject ringObject = new GameObject("Güvenli Bölge Halkası");
         ringObject.transform.SetParent(holdZoneMarker.transform, false);
