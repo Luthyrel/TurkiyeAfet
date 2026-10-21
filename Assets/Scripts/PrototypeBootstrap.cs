@@ -137,15 +137,13 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
     private void BuildTable(Material topMat, Material legMat)
     {
-        safeTablePosition = new Vector3(0f, 0f, 1.25f);
-        CreateBox("Sağlam Masanın Üstü", safeTablePosition + new Vector3(0f, 0.82f, 0f),
+        safeTablePosition = new Vector3(0.35f, 0f, 1.25f);
+        CreateBox("Sağlam Masanın Üstü", safeTablePosition + new Vector3(0f, 1.25f, 0f),
             new Vector3(2.2f, 0.14f, 1.35f), topMat);
         for (int x = -1; x <= 1; x += 2)
         for (int z = -1; z <= 1; z += 2)
-            CreateBox("Masa Ayağı", safeTablePosition + new Vector3(x * 0.94f, 0.40f, z * 0.53f),
-                new Vector3(0.12f, 0.80f, 0.12f), legMat);
-        CreateBox("Masa Alt Bağlantısı", safeTablePosition + new Vector3(0f, 0.28f, 0f),
-            new Vector3(1.8f, 0.10f, 0.96f), legMat);
+            CreateBox("Masa Ayağı", safeTablePosition + new Vector3(x * 0.94f, 0.615f, z * 0.53f),
+                new Vector3(0.12f, 1.23f, 0.12f), legMat);
         CreateBox("Sağlam Koltuk", new Vector3(-1.9f, 0.55f, 1.45f), new Vector3(2.5f, 1.1f, 0.85f), topMat);
         BuildHoldZoneMarker();
     }
@@ -153,7 +151,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private void BuildHoldZoneMarker()
     {
         holdZoneMarker = new GameObject("Çök-Kapan-Tutun Güvenli Bölgesi");
-        holdZoneMarker.transform.position = safeTablePosition + new Vector3(-0.45f, 0f, -0.75f) + Vector3.up * 0.035f;
+        holdZoneMarker.transform.position = safeTablePosition + new Vector3(0f, 0f, -0.10f) + Vector3.up * 0.035f;
 
         GameObject ringObject = new GameObject("Güvenli Bölge Halkası");
         ringObject.transform.SetParent(holdZoneMarker.transform, false);
