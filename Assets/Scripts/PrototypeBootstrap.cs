@@ -359,10 +359,29 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         scenario.StartEarthquake();
     }
 
+
     public void TogglePause()
     {
-        if (!gameStarted || scenario.CurrentPhase == PrototypeScenario.Phase.Completed)
+        Debug.Log("ESC: TogglePause çağrıldı");
+
+        if (!gameStarted)
+        {
+            Debug.Log("HATA: gameStarted false");
             return;
+        }
+
+        if (scenario == null)
+        {
+            Debug.Log("HATA: scenario null");
+            return;
+        }
+
+        if (scenario.CurrentPhase == PrototypeScenario.Phase.Completed)
+        {
+            Debug.Log("HATA: Senaryo tamamlanmış");
+            return;
+        }
+
         if (paused)
             ResumeGame();
         else
@@ -370,6 +389,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             paused = true;
             Time.timeScale = 0f;
             ui.ShowPause();
+            Debug.Log("DURAKLATMA MENÜSÜ AÇILDI");
         }
     }
 
@@ -386,6 +406,14 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
+
+
+    public void QuitGame()
+    {
+        Time.timeScale = 1f;
+        Application.Quit();
+    }
+
 
     public void SetPlayerControls(bool enabled)
     {
