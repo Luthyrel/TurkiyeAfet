@@ -5,8 +5,8 @@ public sealed class PrototypeScenario : MonoBehaviour
 {
     public enum Phase { Preparation, Shaking, Aftershock, Completed }
 
-    private const float QuakeDuration = 14f;
-    private const float RequiredHoldDuration = 4f;
+    private const float QuakeDuration = 10f;
+    private const float RequiredHoldDuration = 5f;
     private const float HoldZoneRadius = 0.72f;
 
     private readonly List<PrototypeInteractable> preparationTasks = new List<PrototypeInteractable>();
