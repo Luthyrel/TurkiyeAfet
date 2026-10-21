@@ -238,14 +238,31 @@ public sealed class PrototypePlayerController : MonoBehaviour
         return Vector3.Dot(transform.forward, direction.normalized) >= minimumDot;
     }
 
+
     public void BeginTableHold(Vector3 alignPosition, Vector3 safeTable)
     {
         holdingTable = true;
         holdPosition = alignPosition;
-        Debug.Log($"Karakter: {transform.position} | Tutunma hedefi: {holdPosition} | Masa: {safeTable}");
         tablePosition = safeTable;
-        transform.rotation = Quaternion.Euler(0f, transform.eulerAngles.y - 90f, 0f);
+
         SetCharacterControllerHeight(HoldingHeight);
+
+        // Karakteri tutunma hedefine hizala.
+        CharacterController controller = GetComponent<CharacterController>();
+        if (controller != null)
+            controller.enabled = false;
+
+        transform.position = alignPosition;
+
+        if (controller != null)
+            controller.enabled = true;
+
+        // Masaya bak.
+        Vector3 toTable = safeTable - transform.position;
+        toTable.y = 0f;
+
+        if (toTable.sqrMagnitude > 0.001f)
+            transform.rotation = Quaternion.LookRotation(toTable);
 
         if (characterAnimator != null)
             SetAnimation("Crouch");
