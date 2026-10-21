@@ -87,7 +87,7 @@ public sealed class PrototypePlayerController : MonoBehaviour
             bool aligned = holdingTable
                 && distance <= 0.35f
                 && toTable.sqrMagnitude > 0.001f
-                && angle <= 80f;
+                && angle <= 180f;
 
             if (holdingTable && !aligned)
             {
@@ -449,12 +449,12 @@ public sealed class PrototypePlayerController : MonoBehaviour
             Vector3 toHold = holdPosition - transform.position;
             toHold.y = 0f;
 
-            Vector3 toLeg = tablePosition + new Vector3(-0.94f, 0f, -0.53f)
-                    - transform.position;
-            toLeg.y = 0f;
-
             if (toHold.sqrMagnitude > 0.0001f)
                 character.Move(Vector3.ClampMagnitude(toHold, 2.2f * Time.deltaTime));
+
+            Vector3 toLeg = tablePosition + new Vector3(-0.94f, 0f, -0.53f)
+                - transform.position;
+            toLeg.y = 0f;
 
             if (toLeg.sqrMagnitude > 0.001f)
             {
