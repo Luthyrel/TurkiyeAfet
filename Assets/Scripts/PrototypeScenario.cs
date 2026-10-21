@@ -279,7 +279,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         holdTimer = 0f;
         // Masa üstünün ön kenarını geçip altına girecek kadar hizala; çarpışma
         // kapsülü bu durumda masa tablasının alt boşluğuna sığacak şekilde alçalır.
-        Vector3 underTablePosition = safeTablePosition + new Vector3(0f, 0f, -0.10f);
+        Vector3 underTablePosition = safeTablePosition + new Vector3(-0.35f, 0f, -0.15f);
         player.BeginTableHold(underTablePosition, safeTablePosition);
         bootstrap.ShowNotice("Çökme tamamlandı. Masaya tutunuyorsun; sarsıntı boyunca burada kal.");
         RefreshHud();
