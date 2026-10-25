@@ -407,7 +407,7 @@ public sealed class PrototypePlayerController : MonoBehaviour
             if (Keyboard.current.eKey.wasPressedThisFrame)
             {
                 if (holdingTable)
-                    scenario.CancelTableHold("Tutunmayı bıraktın. Güvenli pozisyonu 4 saniye korumazsan görev tamamlanmaz.");
+                    scenario.CancelTableHold("Tutunmayı bıraktın. Güvenli pozisyonu 5 saniye korumazsan görev tamamlanmaz.");
                 else
                     scenario.TryStartTableHold();
             }
