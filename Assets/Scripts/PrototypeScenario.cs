@@ -1,13 +1,39 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public sealed class PrototypeScenario : MonoBehaviour
 {
-    public enum Phase { Preparation, Shaking, Aftershock, Completed }
+    public enum Phase { Preparation, Shaking, Blackout, Trapped, Aftershock, Completed }
 
     private const float QuakeDuration = 10f;
     private const float RequiredHoldDuration = 5f;
     private const float HoldZoneRadius = 0.72f;
+    private const float CollapseChance = 0.5f;
+    private const float BlackoutDuration = 2.5f;
+
+    private static readonly string[] TrappedQuestions =
+    {
+        "Enkaz altında ağzını ve burnunu nasıl korursun?",
+        "Sıkıştıysan veya yaralıysan ne yaparsın?",
+        "Kurtarma ekibine yerini nasıl bildirirsin?"
+    };
+
+    private static readonly string[][] TrappedChoices =
+    {
+        new[] { "Yakındaki bez veya giysiyle ağzımı ve burnumu örterim.", "Kibrit yakıp çevreyi görmeye çalışırım.", "Hızlı hareket ederek etrafımdaki tozu dağıtırım." },
+        new[] { "Üzerime düşen parçaları kuvvetle itmeye çalışırım.", "Durumumu sakinçe değerlendirir, riskli hareketlerden kaçınır ve enerjimi korurum.", "Kurtulmak için sürekli hareket ederim." },
+        new[] { "Hiç durmadan bağırırım.", "Sesleri dinler, aralıklı vurarak veya düdükle varlığımı duyururum.", "Elektrik düğmelerini açıp kapatırım." }
+    };
+
+    private static readonly int[] TrappedCorrectChoices = { 0, 1, 1 };
+    private static readonly string[] TrappedCorrectFeedback =
+    {
+        "Doğru. Bez veya giysi tozu solumayı azaltmaya yardımcı olur.",
+        "Doğru. Durumunu kontrol et; tehlikeli hareketlerden kaçın ve enerjini koru.",
+        "Doğru. Kurtarma ekiplerinin seslerini dinle; aralıklı ses ve enerjini koruyarak yerini bildir."
+    };
 
     private readonly List<PrototypeInteractable> preparationTasks = new List<PrototypeInteractable>();
     private readonly List<Rigidbody> looseObjects = new List<Rigidbody>();
@@ -22,9 +48,12 @@ public sealed class PrototypeScenario : MonoBehaviour
     private bool gasValveClosed;
     private bool windowsOpened;
     private bool exitHintShown;
+    private bool collapseOccurred;
+    private int trappedQuestionIndex;
 
     public Phase CurrentPhase { get; private set; } = Phase.Preparation;
     public bool IsShaking => CurrentPhase == Phase.Shaking;
+    public bool IsTrapped => CurrentPhase == Phase.Trapped;
     public bool IsPostQuake => CurrentPhase == Phase.Aftershock;
     public int Score { get; private set; }
     public float HoldProgress => Mathf.Clamp01(holdTimer / RequiredHoldDuration);
@@ -148,7 +177,7 @@ public sealed class PrototypeScenario : MonoBehaviour
 
             target.CompleteAction();
             windowsOpened = true;
-            Score += 50;
+            Score += 100;
             bootstrap.ShowNotice("Pencere açıldı. Elektrik düğmelerine dokunmadan binayı terk et.");
             RefreshHud();
             return;
@@ -325,7 +354,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (!safeActionComplete && holdTimer >= RequiredHoldDuration)
         {
             safeActionComplete = true;
-            Score += 150;
+            Score += 100;
             bootstrap.ShowNotice("Doğru: güvenli alanda çöktün ve masaya tutunarak pozisyonunu korudun.");
             RefreshHud();
         }
@@ -334,6 +363,12 @@ public sealed class PrototypeScenario : MonoBehaviour
 
     private void Update()
     {
+        if (IsTrapped)
+        {
+            ReadTrappedAnswer();
+            return;
+        }
+
         if (IsShaking)
         {
             quakeTimer += Time.deltaTime;
@@ -368,21 +403,75 @@ public sealed class PrototypeScenario : MonoBehaviour
     }
     private void EndEarthquake()
     {
-        CurrentPhase = Phase.Aftershock;
         player.SetShake(0f);
         player.EndTableHold();
         player.SetCrouched(false);
         bootstrap.SetHoldZoneVisible(false);
 
-        if (!safeActionComplete)
+        collapseOccurred = Random.value < CollapseChance;
+        if (collapseOccurred)
         {
-            bootstrap.ShowNotice("Sarsıntı bitti. 4 saniye boyunca güvenli pozisyonda tutunamadığın için 100 puan kaybettin.");
-        }
-        else
-        {
-            bootstrap.ShowNotice("Sarsıntı durdu. Önce çevreni kontrol et; gaz kokusu varsa vanayı güvenliyse kapat, kapı ve pencereleri aç ve elektrik düğmelerine dokunmadan çık.");
+            CurrentPhase = Phase.Blackout;
+            bootstrap.SetPlayerControls(false);
+            bootstrap.ShowBlackout();
+            StartCoroutine(BeginTrappedScenario());
+            return;
         }
 
+        CurrentPhase = Phase.Aftershock;
+        if (!safeActionComplete)
+            bootstrap.ShowNotice("Sarsıntı bitti. Güvenli bölgede çöküp masaya 5 saniye tutunma koşulunu tamamlayamadın. Puanından kesinti yapılmadı.");
+        else
+            bootstrap.ShowNotice("Sarsıntı durdu. Önce çevreni kontrol et; gaz kokusu varsa vanayı güvenliyse kapat, kapı ve pencereleri aç ve elektrik düğmelerine dokunmadan çık.");
+
+        RefreshHud();
+    }
+
+    private IEnumerator BeginTrappedScenario()
+    {
+        yield return new WaitForSecondsRealtime(BlackoutDuration);
+        CurrentPhase = Phase.Trapped;
+        trappedQuestionIndex = 0;
+        bootstrap.ShowTrappedQuestion(1, TrappedQuestions[0], TrappedChoices[0], string.Empty);
+        RefreshHud();
+    }
+
+    private void ReadTrappedAnswer()
+    {
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard == null)
+            return;
+
+        if (keyboard.digit1Key.wasPressedThisFrame || keyboard.numpad1Key.wasPressedThisFrame)
+            SelectTrappedAnswer(0);
+        else if (keyboard.digit2Key.wasPressedThisFrame || keyboard.numpad2Key.wasPressedThisFrame)
+            SelectTrappedAnswer(1);
+        else if (keyboard.digit3Key.wasPressedThisFrame || keyboard.numpad3Key.wasPressedThisFrame)
+            SelectTrappedAnswer(2);
+    }
+
+    public void SelectTrappedAnswer(int choiceIndex)
+    {
+        if (!IsTrapped || choiceIndex < 0 || choiceIndex >= 3)
+            return;
+
+        if (choiceIndex != TrappedCorrectChoices[trappedQuestionIndex])
+        {
+            bootstrap.SetTrappedFeedback("Bu seçim güvenli değil. Bilgiyi tekrar gözden geçir ve doğru adımı seç.");
+            return;
+        }
+
+        Score += 100;
+        trappedQuestionIndex++;
+        if (trappedQuestionIndex >= TrappedQuestions.Length)
+        {
+            FinishScenario();
+            return;
+        }
+
+        bootstrap.ShowTrappedQuestion(trappedQuestionIndex + 1,
+            TrappedQuestions[trappedQuestionIndex], TrappedChoices[trappedQuestionIndex],
+            TrappedCorrectFeedback[trappedQuestionIndex - 1] + "  +100 puan.");
         RefreshHud();
     }
     private void FinishScenario()
@@ -391,7 +480,8 @@ public sealed class PrototypeScenario : MonoBehaviour
             return;
 
         CurrentPhase = Phase.Completed;
-        Score += 100;
+        if (!collapseOccurred)
+            Score += 100;
         ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.SelectedProvince : null;
         int plateCode = province != null ? province.plateCode : 6;
         string completedKey = ProvinceManager.ProgressKey("TurkiyeAfet.Deprem.Completed", plateCode);
@@ -412,13 +502,20 @@ public sealed class PrototypeScenario : MonoBehaviour
         PlayerPrefs.Save();
 
         GameManager.Instance?.ShowResults();
-        string review =
-            (province != null ? province.name + "  •  PLAKA " + province.PlateLabel + ". " : "") +
+        string review = (province != null ? province.name + "  •  PLAKA " + province.PlateLabel + ". " : "") +
             "Hazırlık: " + preparationTasks.FindAll(t => t.IsComplete).Count + "/3 görev. " +
-            "Deprem anı: " + (safeActionComplete ? "çök-kapan-tutun tamamlandı." : "güvenli pozisyonda yeterince kalınmadı.") + " " +
-            "Deprem sonrası: " + (gasValveClosed ? "gaz vanası kapatıldı, " : "gaz vanası kapatılmadı; ") +
-            (windowsOpened ? "pencere açıldı, " : "pencere açılmadı; ") +
-            "toplanma alanına ulaşıldı. Hasarlı binaya geri dönme; resmî uyarıları izle.";
+            "Deprem anı: " + (safeActionComplete ? "5 saniye çök-kapan-tutun tamamlandı. " : "5 saniyelik güvenli tutunma tamamlanmadı. ");
+        if (collapseOccurred)
+        {
+            review += "Enkaz altında: " + trappedQuestionIndex + "/3 doğru güvenlik adımı. " +
+                "Sakin kal, tozu azalt, tehlikeli hareketlerden kaçın, enerjini koru ve kurtarma ekiplerine kontrollü biçimde ses ver.";
+        }
+        else
+        {
+            review += "Deprem sonrası: " + (gasValveClosed ? "gaz vanası kapatıldı, " : "gaz vanası kapatılmadı; ") +
+                (windowsOpened ? "pencere açıldı, " : "pencere açılmadı; ") +
+                "toplanma alanına ulaşıldı. Hasarlı binaya geri dönme; resmî uyarıları izle.";
+        }
         bootstrap.ShowResults(Score, review);
         RefreshHud();
     }
@@ -448,6 +545,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         {
             Phase.Preparation => "DEPREM ÖNCESİ HAZIRLIK",
             Phase.Shaking => "DEPREM ANI  •  " + Mathf.CeilToInt(Mathf.Max(0f, QuakeDuration - quakeTimer)) + " sn",
+            Phase.Blackout => "ENKAZ OLUŞTU",
+            Phase.Trapped => "ENKAZ ALTINDA  •  ADIM " + Mathf.Min(3, trappedQuestionIndex + 1) + "/3",
             Phase.Aftershock => "DEPREM SONRASI",
             _ => "TATBİKAT TAMAMLANDI"
         };
