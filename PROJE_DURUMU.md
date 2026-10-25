@@ -1,6 +1,6 @@
 # Türkiye Afet — Proje Durumu
 
-Son güncelleme: 2026-10-12
+Son güncelleme: 2026-10-25
 
 ## Amaç
 
@@ -51,13 +51,13 @@ Türkiye'de afetlere hazırlık ve doğru davranışları öğreten, Türkçe, 3
 - WASD hareketi, fare bakışı, Shift koşusu, C çömelmesi ve E etkileşimi.
 - Quaternius Animated Men CC0 `Male_Casual.fbx` mevcut sivil model dosyası olarak yerleştirildi. Önizlemesi doğal kafa/vücut oranı, saç, uzun kollu üst, pantolon ve ayakkabı gösteriyor; Unity importu ve oyundaki görünümü henüz doğrulanmadı. Kamera kontrol kodu değiştirilmedi.
 - C ile çömelme kodu `Crouch` Animator durumunu çağırır; bu klip UAL1 içindeki `Crouch_Idle_Loop`'tur. Eski Kenney modelinden kalan Avatar iskelet eşlemesi temizlendi; model FBX'inin animasyon importu açıldı ve modelin kendi Idle/Walk/Run klipleri Animator Controller'a atanacak. Unity Editor'de yeniden import ve Play Mode doğrulaması bekliyor.
-- Bozuk, dünya koordinatlarında kolları/ayakları/gövdeyi aynı anda zorlayan özel IK kaldırıldı. `Male_Casual.fbx` içinde çömelme veya masa korunma/tutunma klibi bulunmuyor. Uygun bir korunma klibi bulunmadığı için E sahte Hold durumu oynatmaz ve görev puanlaması başlamaz; Türkçe açıklama gösterir.
+- Özel IK kaldırıldı. `Male_Casual.fbx` içinde masa korunma/tutunma klibi bulunmuyor; oyun tutunma süresini ve konumunu puanlar, ancak karakter görsel olarak Crouch klibini oynatır ve gerçek tutunma pozu göstermez.
 - Deprem anında masanın önünde güvenli bölge halkası ve yön oku; doğru yerde çömelme ve tutunma ayrı HUD koşullarıdır.
-- 4 saniyelik güvenli konum/çömelme görev sayacı mantığı mevcuttur; görsel tutuş pozu olmadığından bu mekanik tamamlanmış sayılmaz.
+- Deprem 10 saniye sürer; güvenli bölgede çöküp masaya 5 saniye tutunma 100 puan kazandırır. Bu koşul tamamlanmazsa puan kesilmez.
 - Rafı sabitleme, ağır eşyayı alt seviyeye alma, çıkış yolunu açma görevleri.
 - Deprem sarsıntısı, kamera sarsılması ve sabitlenmemiş nesnelerin fiziksel tepkisi.
 - Masanın yanında çök-kapan-tutun uygulaması, gaz vanası görevi, binadan çıkış ve toplanma alanına ilerleme.
-- Gaz kokusu eğitiminde vanayı kapatma ve pencereyi açma adımları etkileşimlidir; cam açılışta yana kayar.
+- Gaz kokusu eğitiminde vanayı kapatma ve pencereyi açma adımları etkileşimlidir; ikisi de 100 puan verir ve cam açılışta yana kayar.
 - Puan, sonuç değerlendirmesi ve yerel tamamlanma/yüksek puan kaydı.
 - Ana menü, oyun içi görev paneli ve duraklatma/sonuç ekranı Türkçe.
 - Etkin hazırlık görevi panelde renkli/simgeli işaretlenir; hedef nesne renk ve emisyonla vurgulanır.
@@ -102,8 +102,8 @@ Türkiye'de afetlere hazırlık ve doğru davranışları öğreten, Türkçe, 3
 
 - 81 il seçilebilir; her ildeki içerik şimdilik aynı genel deprem eğitim prototipidir ve doğrulanmış risk dağılımı değildir.
 - Harita sınır verisi geoBoundaries/OpenStreetMap kaynaklı, sınır yılı 2021'dir; resmi ölçüm/kadastral harita olarak sunulmaz.
-- Ev ve mobilyalar geçici, kodla oluşturulmuş 3D nesnelerdir. Hareket klipleri Quaternius CC0 varlıklarıdır. Özel IK kaldırılmıştır; `Hold` durumu yalnızca çömelme klibini kullanır ve masa ayağı/baş-boyun temasını karşılamaz.
-- Yeni Quaternius modelinin yenilenmiş Humanoid Avatar'ı ve C çömelme geçişi Unity Editor/Play Mode'da doğrulanmadı. E için uygun korunma/tutunma animasyonu kaynaklarda yok; bu nedenle gerçek çök-kapan-tutun davranışı tamamlanmış sayılamaz.
+- Ev ve mobilyalar geçici, kodla oluşturulmuş 3D nesnelerdir. Hareket klipleri Quaternius CC0 varlıklarıdır. Tutunma animasyonu bulunmadığından bu hareket görsel olarak gerçek masa tutuşunu göstermemektedir.
+- Yeni Quaternius modelinin yenilenmiş Humanoid Avatar'ı ve C çömelme geçişi Unity Editor/Play Mode'da ayrıca doğrulanmalı. E ile konum/süre tabanlı tutunma çalışır, ancak karakter animasyonu gerçek masa tutuşunu göstermemektedir.
 - Sahne içeriği Play sırasında oluşturulur; Scene görünümünde düzenlenebilir mobilya prefab'ları henüz yoktur.
 - Ayarlar menüsü, diğer afetler, resmî kaynaklarla belgelenmiş geniş eğitim içeriği, yapılandırılmış profil kaydı ve Windows build'i bekliyor.
 - Bu oturumda Unity 6000.6.4f1 batchmode lisans istemcisi/WMI hatasıyla kapanmıştır; yeni model importu, C# derlemesi ve Play Mode doğrulanmadı.
@@ -127,3 +127,12 @@ Türkiye'de afetlere hazırlık ve doğru davranışları öğreten, Türkçe, 3
 
 Unity Editor'de model FBX'ini yeniden içe aktar; Humanoid Avatar'ın geçerli olduğunu ve `Crouch` durumunun C ile gerçekten oynadığını Play Mode'da kontrol et. E animasyonu için gerçek korunma/tutunma klibi içeren uygun bir kaynak edinilmeden mekanik tamamlandı sayılmamalı. Sonrasında E'nin koşul kontrolünü, kamera/kontrolleri ve senaryo mesajlarını görüntülü olarak doğrula.
 
+
+
+## 2026-10-25 — Enkaz senaryosu ve puan akışı
+
+- 10 saniyelik deprem sonunda, tutunma tamamlanmış olsun veya olmasın, %50 olasılıkla enkaz senaryosu başlar. Enkaz oluşursa ekran 2,5 saniye tamamen kararır ve normal deprem sonrası görevler yerine enkaz altı bilgi görevleri açılır.
+- Enkaz altı görevleri: tozdan korunmak için ağız-burnu bez/giysiyle örtme; durumu kontrol edip tehlikeli hareketlerden kaçınarak enerjiyi koruma; kurtarma ekiplerini dinleyip aralıklı ses/vuruşla yerini bildirme. Her doğru adım 100 puan verir.
+- Bu içerik AFAD'ın enkaz altında mahsur kalma yönergelerindeki sakin kalma, hareketleri kontrol etme, enerjiyi koruma ve kontrollü ses verme önerilerine dayanır.
+- Pencere görevi 100 puan, 5 saniyelik tutunma 100 puan verir. Başarılı normal tahliye ve başarılı enkaz senaryolarının toplam üst sınırı 700 puandır.
+- Unity Play Mode uçtan uca doğrulaması bu değişiklikten sonra yapılmadı.
