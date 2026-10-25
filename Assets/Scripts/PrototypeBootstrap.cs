@@ -452,6 +452,24 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             ui.SetNotice(text);
     }
 
+    public void ShowBlackout()
+    {
+        if (ui != null)
+            ui.ShowBlackout();
+    }
+
+    public void ShowTrappedQuestion(int step, string question, string[] choices, string feedback)
+    {
+        if (ui != null)
+            ui.ShowTrappedQuestion(step, question, choices, feedback);
+    }
+
+    public void SetTrappedFeedback(string feedback)
+    {
+        if (ui != null)
+            ui.SetTrappedFeedback(feedback);
+    }
+
     public void RefreshHud(string phase, string tasks, string shelter, string valve, string windows, string exit, int score, float holdProgress)
     {
         if (ui != null)
