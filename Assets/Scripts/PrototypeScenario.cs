@@ -12,6 +12,8 @@ public sealed class PrototypeScenario : MonoBehaviour
     private const float HoldZoneRadius = 0.72f;
     private const float CollapseChance = 0.5f;
     private const float BlackoutDuration = 2.5f;
+    private const int RequiredBagItemCount = 6;
+    private const float PreparationCountdownDuration = 5f;
 
     private static readonly string[] TrappedQuestions =
     {
@@ -41,12 +43,20 @@ public sealed class PrototypeScenario : MonoBehaviour
 
     private PrototypeBootstrap bootstrap;
     private PrototypePlayerController player;
+    private PrototypeInteractable disasterBag;
+    private PrototypeInteractable heldBagItem;
     private Vector3 safeTablePosition;
     private float quakeTimer;
     private float holdTimer;
+    private float preparationCountdownRemaining;
+    private int baggedItemCount;
+    private bool disasterBagOpen;
+    private bool bagTaskSkipped;
+    private bool preparationCountdownStarted;
     private bool safeActionComplete;
     private bool gasValveClosed;
     private bool windowsOpened;
+    private bool exitDoorOpened;
     private bool exitHintShown;
     private bool collapseOccurred;
     private int trappedQuestionIndex;
@@ -55,6 +65,12 @@ public sealed class PrototypeScenario : MonoBehaviour
     public bool IsShaking => CurrentPhase == Phase.Shaking;
     public bool IsTrapped => CurrentPhase == Phase.Trapped;
     public bool IsPostQuake => CurrentPhase == Phase.Aftershock;
+    public bool IsDisasterBagOpen => disasterBagOpen;
+    public bool HasItemInHand => heldBagItem != null;
+    public int BaggedItemCount => baggedItemCount;
+    public bool IsBagTaskSkipped => bagTaskSkipped;
+    public float PreparationCountdownRemaining => preparationCountdownStarted
+        ? Mathf.Max(0f, preparationCountdownRemaining) : 0f;
     public int Score { get; private set; }
     public float HoldProgress => Mathf.Clamp01(holdTimer / RequiredHoldDuration);
     public Vector3 HoldZonePosition => safeTablePosition + new Vector3(-0.45f, 0f, -0.75f);
@@ -81,12 +97,12 @@ public sealed class PrototypeScenario : MonoBehaviour
                     : "Sağlam masanın önündeki ışıklı halkaya yaklaş.";
             }
             if (!player.IsCrouched)
-                return "Güvenli bölgedesin. Önce C ile çök; sonra masaya dönüp E ile tutun.";
+                return "Güvenli bölgedesin. Önce C ile çök; sonra masaya dönüp E veya sol tıkla tutun.";
             if (!player.IsFacing(safeTablePosition, 0.65f))
-                return "Çökme tamamlandı. Masaya dön; sonra E ile tutun.";
+                return "Çökme tamamlandı. Masaya dön; sonra E veya sol tıkla tutun.";
             if (!player.HasTableProtectionAnimation)
                 return "Çökme tamamlandı. Bu karakter için doğrulanmış masa tutunma animasyonu yok.";
-            return "✓ Çökme tamamlandı. E ile masaya tutun ve sarsıntı boyunca kal.";
+            return "✓ Çökme tamamlandı. E veya sol tıkla masaya tutun ve sarsıntı boyunca kal.";
         }
     }
 
@@ -98,7 +114,8 @@ public sealed class PrototypeScenario : MonoBehaviour
                 return null;
             for (int i = 0; i < preparationTasks.Count; i++)
             {
-                if (preparationTasks[i] != null && !preparationTasks[i].IsComplete)
+                if (preparationTasks[i] != null && !preparationTasks[i].IsComplete
+                    && !(preparationTasks[i].Action == PrototypeAction.PrepareDisasterBag && bagTaskSkipped))
                     return preparationTasks[i];
             }
             return null;
@@ -117,6 +134,11 @@ public sealed class PrototypeScenario : MonoBehaviour
     {
         if (task != null && !preparationTasks.Contains(task))
             preparationTasks.Add(task);
+    }
+
+    public void SetDisasterBag(PrototypeInteractable bag)
+    {
+        disasterBag = bag;
     }
 
     public void RegisterLooseObject(Rigidbody body)
@@ -148,6 +170,18 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (target.IsComplete)
         {
             bootstrap.ShowNotice("Bu görev tamamlandı. Sıradaki hedefi görev işaretinden bul.");
+            return;
+        }
+
+        if (target.Action == PrototypeAction.PrepareDisasterBag)
+        {
+            InteractWithDisasterBag(target);
+            return;
+        }
+
+        if (target.Action == PrototypeAction.CollectBagItem)
+        {
+            InteractWithBagItem(target);
             return;
         }
 
@@ -183,6 +217,21 @@ public sealed class PrototypeScenario : MonoBehaviour
             return;
         }
 
+        if (target.Action == PrototypeAction.OpenExitDoor)
+        {
+            if (!IsPostQuake)
+            {
+                bootstrap.ShowNotice("Kapı deprem öncesinde ve sarsıntı sırasında açılmaz. Deprem bittikten sonra yeniden dene.");
+                return;
+            }
+
+            target.OpenExitDoor();
+            exitDoorOpened = true;
+            bootstrap.ShowNotice("Kapı açıldı. Gaz ve pencere görevlerini tamamlayıp toplanma alanına ilerle.");
+            RefreshHud();
+            return;
+        }
+
         if (CurrentPhase != Phase.Preparation)
         {
             bootstrap.ShowNotice("Bu nesne şu anki deprem sonrası görevin hedefi değil.");
@@ -209,45 +258,155 @@ public sealed class PrototypeScenario : MonoBehaviour
         {
             case PrototypeAction.SecureFurniture:
                 Score += 100;
-                bootstrap.ShowNotice("Rafı sabitledin. Büyük mobilyaları duvara veya zemine uygun biçimde sabitle.");
+                bootstrap.ShowNotice("Rafı sabitledin. Büyük mobilyaları duvara veya zemine uygun biçimde sabitle. +100 puan.");
                 break;
             case PrototypeAction.LowerHeavyItem:
                 Score += 100;
-                bootstrap.ShowNotice("Ağır eşyayı aşağı aldın. Ağır nesneleri alt raflarda tut.");
+                bootstrap.ShowNotice("Ağır eşyayı aşağı aldın. Ağır nesneleri alt raflarda tut. +100 puan.");
                 break;
             case PrototypeAction.ClearExit:
                 Score += 100;
-                bootstrap.ShowNotice("Çıkış yolu açıldı. Geçişleri eşya ile kapatma.");
+                bootstrap.ShowNotice("Çıkış yolu açıldı. Geçişleri eşya ile kapatma. +100 puan.");
                 break;
         }
 
         RefreshHud();
         if (PreparationComplete())
-            bootstrap.ShowNotice("Hazırlık tamamlandı. Enter tuşuna basarak sarsıntı tatbikatını başlat.");
+            StartPreparationCountdown();
     }
 
-    public bool PreparationComplete()
+    private void InteractWithDisasterBag(PrototypeInteractable target)
+    {
+        if (CurrentPhase != Phase.Preparation || CurrentPreparationTarget != target)
+        {
+            PrototypeInteractable active = CurrentPreparationTarget;
+            bootstrap.ShowNotice(active != null
+                ? "Önce aktif görevi tamamla: " + active.ActionName
+                : "Hazırlık görevleri tamamlandı.");
+            return;
+        }
+
+        if (!disasterBagOpen)
+        {
+            disasterBagOpen = true;
+            target.SetBagOpenVisual(true);
+            bootstrap.ShowNotice("Çantayı açtın. Evin içindeki 6 eşyayı bulup teker teker çantaya koy.");
+            RefreshHud();
+            return;
+        }
+
+        if (heldBagItem == null)
+        {
+            if (!CorePreparationTasksComplete())
+            {
+                bootstrap.ShowNotice("Önce diğer hazırlık görevlerini tamamla.");
+                return;
+            }
+
+            bagTaskSkipped = true;
+            bootstrap.ShowNotice("Çanta bonus görevini atladın. Deprem 5 saniye içinde başlayacak.");
+            RefreshHud();
+            StartPreparationCountdown();
+            return;
+        }
+
+        Vector3[] bagSlots =
+        {
+            new Vector3(-0.23f, 0.37f, -0.10f), new Vector3(0f, 0.37f, -0.10f), new Vector3(0.23f, 0.37f, -0.10f),
+            new Vector3(-0.23f, 0.37f, 0.10f), new Vector3(0f, 0.37f, 0.10f), new Vector3(0.23f, 0.37f, 0.10f)
+        };
+        player.ReleaseBagItem(heldBagItem);
+        heldBagItem.PackBagItem(disasterBag.transform, bagSlots[baggedItemCount], 0.14f);
+        heldBagItem = null;
+        baggedItemCount++;
+
+        if (baggedItemCount >= RequiredBagItemCount)
+        {
+            target.CompleteAction();
+            Score += 75;
+            bootstrap.ShowNotice("Çanta hazırlandı. +75 ek puan.");
+        }
+        else
+        {
+            bootstrap.ShowNotice("Eşya çantaya kondu. " + baggedItemCount + "/" + RequiredBagItemCount);
+        }
+
+        RefreshHud();
+        if (PreparationComplete())
+            StartPreparationCountdown();
+    }
+
+    private void InteractWithBagItem(PrototypeInteractable item)
+    {
+        if (CurrentPhase != Phase.Preparation || CurrentPreparationTarget != disasterBag)
+        {
+            PrototypeInteractable active = CurrentPreparationTarget;
+            bootstrap.ShowNotice(active != null
+                ? "Önce aktif hazırlık görevini tamamla: " + active.ActionName
+                : "Hazırlık görevleri tamamlandı.");
+            return;
+        }
+
+        if (!disasterBagOpen)
+        {
+            bootstrap.ShowNotice("Önce koltuğun üzerindeki afet çantasını aç.");
+            return;
+        }
+
+        if (heldBagItem != null)
+        {
+            bootstrap.ShowNotice("Önce elindekini çantaya koy.");
+            return;
+        }
+
+        heldBagItem = item;
+        player.HoldBagItem(item);
+        bootstrap.ShowNotice("Eşyayı aldın. Çantaya dönüp E veya sol tıkla içine koy.");
+        RefreshHud();
+    }
+
+    private void StartPreparationCountdown()
+    {
+        if (preparationCountdownStarted || !PreparationComplete())
+            return;
+
+        preparationCountdownStarted = true;
+        preparationCountdownRemaining = PreparationCountdownDuration;
+        bootstrap.ShowNotice("Hazırlık tamamlandı. Deprem yaklaşık 5 saniye içinde başlayacak.");
+        RefreshHud();
+    }
+
+    private bool CorePreparationTasksComplete()
     {
         if (preparationTasks.Count == 0)
             return false;
 
         for (int i = 0; i < preparationTasks.Count; i++)
         {
-            if (!preparationTasks[i].IsComplete)
+            PrototypeInteractable task = preparationTasks[i];
+            if (task != null && task.Action != PrototypeAction.PrepareDisasterBag && !task.IsComplete)
                 return false;
         }
         return true;
+    }
+
+    public bool PreparationComplete()
+    {
+        return CorePreparationTasksComplete()
+            && (bagTaskSkipped || (disasterBag != null && disasterBag.IsComplete));
     }
 
     public void StartEarthquake()
     {
         if (!PreparationComplete() || CurrentPhase != Phase.Preparation)
         {
-            bootstrap.ShowNotice("Önce üç hazırlık görevini tamamla.");
+            bootstrap.ShowNotice("Önce tüm hazırlık görevlerini tamamla.");
             return;
         }
 
         CurrentPhase = Phase.Shaking;
+        preparationCountdownStarted = false;
+        preparationCountdownRemaining = 0f;
         quakeTimer = 0f;
         holdTimer = 0f;
         safeActionComplete = false;
@@ -301,7 +460,7 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         if (!player.IsFacing(safeTablePosition, 0.65f))
         {
-            bootstrap.ShowNotice("Masaya dön. Üçüncü şahıs kamerayı masaya çevir, sonra E'ye bas.");
+            bootstrap.ShowNotice("Masaya dön. Üçüncü şahıs kamerayı masaya çevir, sonra E veya sol tıkla.");
             return;
         }
 
@@ -363,6 +522,19 @@ public sealed class PrototypeScenario : MonoBehaviour
 
     private void Update()
     {
+        if (CurrentPhase == Phase.Preparation && preparationCountdownStarted)
+        {
+            preparationCountdownRemaining = Mathf.Max(0f, preparationCountdownRemaining - Time.deltaTime);
+            if (preparationCountdownRemaining <= 0f)
+            {
+                StartEarthquake();
+                return;
+            }
+            if (Time.frameCount % 10 == 0)
+                RefreshHud();
+            return;
+        }
+
         if (IsTrapped)
         {
             ReadTrappedAnswer();
@@ -392,6 +564,14 @@ public sealed class PrototypeScenario : MonoBehaviour
                             ? "gaz vanasını kapatıp pencereyi aç"
                             : (!gasValveClosed ? "gaz vanasını kapat" : "pencereyi aç");
                         bootstrap.ShowNotice("Tatbikatta gaz kokusu var. Önce " + missing + "; elektrik düğmelerine dokunmadan çık.");
+                    }
+                }
+                else if (!exitDoorOpened)
+                {
+                    if (!exitHintShown)
+                    {
+                        exitHintShown = true;
+                        bootstrap.ShowNotice("Kapı kapalı. Giriş kapısına dönüp E veya sol tıkla aç.");
                     }
                 }
                 else if (position.x < -10.0f)
@@ -503,7 +683,8 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         GameManager.Instance?.ShowResults();
         string review = (province != null ? province.name + "  •  PLAKA " + province.PlateLabel + ". " : "") +
-            "Hazırlık: " + preparationTasks.FindAll(t => t.IsComplete).Count + "/3 görev. " +
+            "Hazırlık: " + preparationTasks.FindAll(t => t.IsComplete).Count + "/4 görev. " +
+            (bagTaskSkipped ? "Afet çantası bonusu atlandı. " : "") +
             "Deprem anı: " + (safeActionComplete ? "5 saniye çök-kapan-tutun tamamlandı. " : "5 saniyelik güvenli tutunma tamamlanmadı. ");
         if (collapseOccurred)
         {
@@ -531,16 +712,23 @@ public sealed class PrototypeScenario : MonoBehaviour
             PrototypeInteractable task = preparationTasks[i];
             bool active = task == CurrentPreparationTarget;
             task.SetGuidance(active);
+            bool skipped = task.Action == PrototypeAction.PrepareDisasterBag && bagTaskSkipped;
             if (active)
                 tasks += "<color=#5ED7C4>▶ AKTİF HEDEF: " + task.ActionName + "</color>\n";
-            tasks += (task.IsComplete ? "✓ " : "○ ") + task.ActionName;
+            tasks += (task.IsComplete ? "✓ " : skipped ? "↷ " : "○ ") + task.ActionName;
+            if (skipped)
+                tasks += "  (atlandı)";
+            if (task.Action == PrototypeAction.PrepareDisasterBag)
+                tasks += "  " + baggedItemCount + "/" + RequiredBagItemCount;
             if (i < preparationTasks.Count - 1)
                 tasks += "\n";
         }
         string shelter = safeActionComplete ? "✓ Güvenli bölgede çök-kapan-tutun" : "○ Güvenli bölgede çök-kapan-tutun";
         string valve = gasValveClosed ? "✓ Gaz vanasını kapat" : "○ Gaz kokusu: güvenliyse vanayı kapat";
         string windows = windowsOpened ? "✓ Pencereyi aç" : "○ Kapı ve pencereleri aç";
-        string exit = CurrentPhase == Phase.Completed ? "✓ Toplanma alanına ilerle" : "○ Binadan çık, toplanma alanına ilerle";
+        string exit = CurrentPhase == Phase.Completed
+            ? "✓ Kapıdan çıkıp toplanma alanına ulaştın"
+            : (exitDoorOpened ? "✓ Kapıyı aç, toplanma alanına ilerle" : "○ Deprem bitince kapıyı aç, toplanma alanına ilerle");
         string phaseText = CurrentPhase switch
         {
             Phase.Preparation => "DEPREM ÖNCESİ HAZIRLIK",

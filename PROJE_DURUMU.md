@@ -63,7 +63,7 @@ Türkiye'de afetlere hazırlık ve doğru davranışları öğreten, Türkçe, 3
 - Etkin hazırlık görevi panelde renkli/simgeli işaretlenir; hedef nesne renk ve emisyonla vurgulanır.
 - Hedef görünmüyorsa veya duvar arkasındaysa yön oku, nesne adı, eylem ve mesafe gösterilir; duvar arkasındaki nesne görünür kılınmaz.
 - Hedefe bakınca istem nesne adını ve E eylemini gösterir; yanlış nesnede kısa geri bildirim vardır.
-- Hazırlık bitince ayrı fare düğmesi kaldırılmıştır; sarsıntı Enter ile başlatılacak şekilde kodlanmıştır.
+- Hazırlıkta üç mevcut görev ile afet çantası görevi tamamlanır; son görevden yaklaşık 5 saniye sonra deprem otomatik başlar. E etkileşimleri sol fare tıklamasıyla da yapılabilir.
 - Menü ve il seçimi ekranlarında imleç görünür; oyuncu kontrolünde kilitlenir, uygulama odağı kaybolursa geçici olarak açılır.
 - AFAD'ın deprem öncesi, anı ve sonrası davranış rehberine dayalı ilk eğitim mesajları.
 
@@ -134,5 +134,16 @@ Unity Editor'de model FBX'ini yeniden içe aktar; Humanoid Avatar'ın geçerli o
 - 10 saniyelik deprem sonunda, tutunma tamamlanmış olsun veya olmasın, %50 olasılıkla enkaz senaryosu başlar. Enkaz oluşursa ekran 2,5 saniye tamamen kararır ve normal deprem sonrası görevler yerine enkaz altı bilgi görevleri açılır.
 - Enkaz altı görevleri: tozdan korunmak için ağız-burnu bez/giysiyle örtme; durumu kontrol edip tehlikeli hareketlerden kaçınarak enerjiyi koruma; kurtarma ekiplerini dinleyip aralıklı ses/vuruşla yerini bildirme. Her doğru adım 100 puan verir.
 - Bu içerik AFAD'ın enkaz altında mahsur kalma yönergelerindeki sakin kalma, hareketleri kontrol etme, enerjiyi koruma ve kontrollü ses verme önerilerine dayanır.
-- Pencere görevi 100 puan, 5 saniyelik tutunma 100 puan verir. Başarılı normal tahliye ve başarılı enkaz senaryolarının toplam üst sınırı 700 puandır.
+- Afet çantası bonusu hariç, ana görevler başarılı tahliye veya enkaz yolunda 700 puan eder. Çanta 75 ek puan verdiğinden tam skor 775 olabilir.
 - Unity Play Mode uçtan uca doğrulaması bu değişiklikten sonra yapılmadı.
+
+
+## 2026-10-25 — Afet çantası hazırlığı
+
+- Kodla oluşturulan kapalı afet çantası koltuğun üzerinde bulunur. Çanta görevi aktif olunca E veya sol tıkla açılır.
+- Altı farklı eşya zeminde sabit ama mobilya altı/arkası gibi aranacak noktalara yerleştirilir. Oyuncu eşyaya nişan aldığında adı görünür; görev sayacı da `0/6` biçiminde ilerler.
+- Bir eşya E veya sol tıkla alınır ve karakterin sağ eline bağlanır. Aynı anda ikinci eşya alınamaz; eldeki eşya çantaya bırakılmadan yeni eşya alınmaya çalışılırsa alt-orta uyarı çıkar. Elde eşya varken çantaya E veya sol tıkla etkileşmek eşyayı içeri koyar.
+- Afet çantası isteğe bağlı 75 puan bonus verir. Çanta atlanırsa üç temel hazırlık görevi ve sonraki başarılarla 700 puan alınabilir; çanta tamamlanırsa toplam 775 olur.
+- Eşyaların eldeki ve çantadaki boyutu renderer sınırlarından hesaplanır; el kemiğinin ölçeği artık eşyayı devleştirmez. Çanta açıkken iç hazne ve katlanmış kapak görünür, yerleştirilen eşyalar altı yuvaya küçültülüp dizilir ve çanta tamamlandığında içeride görünmeye devam eder. Şişe, ilk yardım kesesi, fener, telsiz, gıda paketi ve düdük ile çanta daha ayırt edilebilir ayrıntılarla yeniden oluşturuldu.
+- Girişe menteşeli, etkileşimli kapı eklendi. Deprem öncesinde ve sarsıntı sürerken açılmaz; enkaz oluşmayan deprem sonrası aşamada açılır. Oyuncu gaz/pencere adımlarını ve kapıyı tamamlayıp dışarıdaki toplanma alanına ilerler.
+- Değişiklikler Unity Play Mode'da uçtan uca denenmedi.

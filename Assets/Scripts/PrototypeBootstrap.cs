@@ -9,6 +9,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
     private readonly Dictionary<string, Material> materials = new Dictionary<string, Material>();
     private PrototypeScenario scenario;
+    private Material yellowBottleCap;
     private PrototypePlayerController player;
     private PrototypeUI ui;
     private Transform windowGlass;
@@ -109,6 +110,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         CreateBox("Kapı Çerçevesi Sol", new Vector3(-6.82f, 1.05f, -3.02f), new Vector3(0.20f, 2.1f, 0.18f), trimMat);
         CreateBox("Kapı Çerçevesi Sağ", new Vector3(-6.82f, 1.05f, -1.58f), new Vector3(0.20f, 2.1f, 0.18f), trimMat);
         CreateBox("Kapı Üst Kiriş", new Vector3(-6.82f, 2.12f, -2.3f), new Vector3(0.20f, 0.16f, 1.62f), trimMat);
+        BuildEntryDoor(trimMat, brassMat);
 
         // Pencere, perde ve yumuşak renkli iç mekân detayları
         GameObject glass = CreateBox("Pencere Camı", new Vector3(2.8f, 1.9f, 6.38f), new Vector3(3.0f, 1.35f, 0.05f), glassMat);
@@ -126,6 +128,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         BuildBookshelf(tealMat, trimMat);
         BuildHeavyItem(brassMat, trimMat);
         BuildExitBlocker(rustMat, trimMat);
+        BuildDisasterBag(tealMat, brassMat, trimMat);
+        BuildDisasterBagItems();
         BuildGasValve(brassMat, trimMat);
         BuildWindowControl(brassMat);
         BuildLooseProps(rustMat, brassMat);
@@ -240,6 +244,251 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         CreateBox("Ayakkabılık", new Vector3(-5.1f, 0.65f, -4.0f), new Vector3(1.4f, 1.3f, 0.7f), trimMat);
     }
 
+    private void BuildEntryDoor(Material panelMat, Material trimMat)
+    {
+        GameObject hinge = new GameObject("Giriş Kapısı Menteşesi");
+        hinge.transform.position = new Vector3(-6.80f, 0f, -3.02f);
+        GameObject doorPivot = new GameObject("Kapı Kanadı ve Menteşe");
+        doorPivot.transform.SetParent(hinge.transform, false);
+        doorPivot.transform.localPosition = Vector3.zero;
+        CreateChildBox(doorPivot.transform, "Ahşap Kapı", new Vector3(0f, 1.02f, 0.72f),
+            new Vector3(0.12f, 2.02f, 1.40f), panelMat);
+        CreateChildBox(doorPivot.transform, "Kapı İç Paneli", new Vector3(-0.066f, 1.02f, 0.72f),
+            new Vector3(0.018f, 1.62f, 1.06f), trimMat);
+        CreateChildBox(doorPivot.transform, "Kapı Üst Paneli", new Vector3(-0.07f, 1.54f, 0.72f),
+            new Vector3(0.02f, 0.42f, 0.94f), panelMat);
+        CreateChildBox(doorPivot.transform, "Kapı Alt Paneli", new Vector3(-0.07f, 0.50f, 0.72f),
+            new Vector3(0.02f, 0.42f, 0.94f), panelMat);
+        GameObject handle = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        handle.name = "Kapı Tokmağı";
+        handle.transform.SetParent(doorPivot.transform, false);
+        handle.transform.localPosition = new Vector3(-0.09f, 1.02f, 0.28f);
+        handle.transform.localScale = new Vector3(0.10f, 0.10f, 0.10f);
+        handle.GetComponent<Renderer>().sharedMaterial = trimMat;
+        PrototypeInteractable task = hinge.AddComponent<PrototypeInteractable>();
+        task.Configure(PrototypeAction.OpenExitDoor, "Kapıyı aç");
+        task.ConfigureExitDoor(doorPivot.transform);
+    }
+
+    private void BuildDisasterBag(Material bodyMat, Material strapMat, Material trimMat)
+    {
+        GameObject bag = new GameObject("Afet Çantası");
+        bag.transform.position = new Vector3(1.1f, 0.88f, 4.90f);
+        CreateChildBox(bag.transform, "Çanta Ana Gövdesi", new Vector3(0f, 0.17f, 0f),
+            new Vector3(0.98f, 0.40f, 0.62f), bodyMat);
+        CreateChildBox(bag.transform, "Ön Cep", new Vector3(0f, 0.10f, -0.325f),
+            new Vector3(0.70f, 0.22f, 0.08f), strapMat);
+        CreateChildBox(bag.transform, "Ön Cep Kapağı", new Vector3(0f, 0.235f, -0.37f),
+            new Vector3(0.73f, 0.055f, 0.035f), trimMat);
+        CreateChildBox(bag.transform, "Dikey Fermuar Şeridi", new Vector3(0.42f, 0.19f, -0.325f),
+            new Vector3(0.025f, 0.25f, 0.02f), trimMat);
+        CreateChildBox(bag.transform, "Yansıtıcı Şerit", new Vector3(-0.02f, 0.14f, -0.37f),
+            new Vector3(0.52f, 0.035f, 0.018f), MakeMaterial("Yansıtıcı Sarı", new Color32(239, 207, 112, 255)));
+        CreateChildBox(bag.transform, "Yan Cep", new Vector3(-0.50f, 0.12f, 0f),
+            new Vector3(0.08f, 0.24f, 0.38f), strapMat);
+        CreateChildBox(bag.transform, "Yan Cep", new Vector3(0.50f, 0.12f, 0f),
+            new Vector3(0.08f, 0.24f, 0.38f), strapMat);
+        GameObject closedLid = CreateChildBox(bag.transform, "Çanta Kapağı",
+            new Vector3(0f, 0.405f, 0f), new Vector3(0.98f, 0.07f, 0.62f), strapMat);
+        GameObject openInterior = new GameObject("Açık Çanta İçi");
+        openInterior.transform.SetParent(bag.transform, false);
+        CreateChildBox(openInterior.transform, "İç Taban", new Vector3(0f, 0.375f, 0f),
+            new Vector3(0.76f, 0.025f, 0.42f), trimMat);
+        CreateChildBox(openInterior.transform, "Arka İç Kenar", new Vector3(0f, 0.405f, 0.245f),
+            new Vector3(0.80f, 0.07f, 0.06f), bodyMat);
+        CreateChildBox(openInterior.transform, "Sol İç Kenar", new Vector3(-0.39f, 0.405f, 0f),
+            new Vector3(0.06f, 0.07f, 0.43f), bodyMat);
+        CreateChildBox(openInterior.transform, "Sağ İç Kenar", new Vector3(0.39f, 0.405f, 0f),
+            new Vector3(0.06f, 0.07f, 0.43f), bodyMat);
+        GameObject openFlap = new GameObject("Arkaya Katlanmış Çanta Kapağı");
+        openFlap.transform.SetParent(openInterior.transform, false);
+        openFlap.transform.localPosition = new Vector3(0f, 0.39f, 0.25f);
+        openFlap.transform.localRotation = Quaternion.Euler(-58f, 0f, 0f);
+        CreateChildBox(openFlap.transform, "Açık Kapak", new Vector3(0f, 0.02f, 0.14f),
+            new Vector3(0.98f, 0.065f, 0.30f), strapMat);
+        CreateChildBox(openFlap.transform, "Kapak Şeridi", new Vector3(0f, 0.06f, 0.14f),
+            new Vector3(0.55f, 0.018f, 0.025f), MakeMaterial("Kapak Şeridi", new Color32(239, 207, 112, 255)));
+        openInterior.SetActive(false);
+        CreateChildBox(bag.transform, "Çanta Kulp Tabanı", new Vector3(0f, 0.49f, 0f),
+            new Vector3(0.38f, 0.06f, 0.07f), strapMat);
+        CreateChildBox(bag.transform, "Omuz Askısı Sol", new Vector3(-0.34f, 0.02f, 0.27f),
+            new Vector3(0.12f, 0.36f, 0.05f), trimMat);
+        CreateChildBox(bag.transform, "Omuz Askısı Sağ", new Vector3(0.34f, 0.02f, 0.27f),
+            new Vector3(0.12f, 0.36f, 0.05f), trimMat);
+
+        PrototypeInteractable task = bag.AddComponent<PrototypeInteractable>();
+        task.Configure(PrototypeAction.PrepareDisasterBag, "Çantayı hazırla.");
+        task.ConfigureBagVisual(closedLid, openInterior);
+        scenario.AddPreparationTask(task);
+        scenario.SetDisasterBag(task);
+    }
+
+    private void BuildDisasterBagItems()
+    {
+        Material blue = MakeMaterial("Su Şişesi", new Color32(47, 139, 188, 255));
+        yellowBottleCap = MakeMaterial("Şişe Kapağı", new Color32(238, 190, 76, 255));
+        Material red = MakeMaterial("İlk Yardım Çantası", new Color32(190, 54, 54, 255));
+        Material white = MakeMaterial("İlk Yardım Beyazı", new Color32(247, 240, 221, 255));
+        Material dark = MakeMaterial("Fener Gövdesi", new Color32(39, 52, 60, 255));
+        Material silver = MakeMaterial("Metal Ayrıntı", new Color32(180, 190, 189, 255));
+        Material yellow = MakeMaterial("Acil Durum Sarısı", new Color32(236, 190, 74, 255));
+        Material radioMat = MakeMaterial("Telsiz Gövdesi", new Color32(52, 83, 77, 255));
+        Material foodMat = MakeMaterial("Gıda Paketi", new Color32(190, 130, 56, 255));
+        Material accent = MakeMaterial("Paket Ayrıntısı", new Color32(244, 224, 168, 255));
+
+        GameObject[] items =
+        {
+            CreateWaterBottle(blue, silver),
+            CreateFirstAidPack(red, white),
+            CreateFlashlight(dark, yellow, silver),
+            CreateRadio(radioMat, yellow, silver),
+            CreateFoodPack(foodMat, accent),
+            CreateWhistle(silver, yellow, dark)
+        };
+        string[] names = { "Su şişesi", "İlk yardım çantası", "El feneri", "Acil durum radyosu", "Uzun ömürlü gıda", "Düdük" };
+        // Kaynak eksenler model-local; hedef yönler avuç çerçevesindedir.
+        // Su şişesi korunur; asimetrik eşyalar doğru yüz/top yönü için ayrı çevrilir.
+        Vector3[] gripAxes = { Vector3.up, Vector3.right, Vector3.right, Vector3.right, Vector3.right, Vector3.right };
+        Vector3[] gripDirections = { Vector3.up, Vector3.down, Vector3.up, Vector3.down, Vector3.down, Vector3.up };
+        Vector3[] gripFaceAxes = { Vector3.back, Vector3.back, Vector3.back, Vector3.back, Vector3.back, Vector3.back };
+        // Sabit yerler: bazıları mobilya altı/arkası; hepsi zeminde ve erişilebilir.
+        Vector3[] floorSpots =
+        {
+            new Vector3(-3.10f, 0f, 0.92f),  // Yemek masasının altında
+            new Vector3(0.35f, 0f, 0.92f),   // Sağlam masanın altında
+            new Vector3(5.08f, 0f, 0.35f),   // TV ünitesinin yanında
+            new Vector3(5.45f, 0f, 2.20f),   // Kitaplığın yan tarafında
+            new Vector3(2.20f, 0f, 5.84f),   // Koltuğun arkasında
+            new Vector3(-5.52f, 0f, -3.48f)  // Ayakkabılığın ön yanında
+        };
+
+        for (int i = 0; i < items.Length; i++)
+        {
+            items[i].name = names[i];
+            items[i].transform.position = floorSpots[i];
+            PrototypeInteractable pickup = items[i].AddComponent<PrototypeInteractable>();
+            pickup.Configure(PrototypeAction.CollectBagItem, names[i]);
+            pickup.ConfigureHeldGrip(gripAxes[i], gripDirections[i], gripFaceAxes[i]);
+        }
+    }
+
+    private GameObject CreateBagItemRoot()
+    {
+        return new GameObject("Yerdeki eşya");
+    }
+
+    private GameObject CreateWaterBottle(Material bottleMaterial, Material detailMaterial)
+    {
+        GameObject root = CreateBagItemRoot();
+        GameObject bottle = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        bottle.name = "Şeffaf Mavi Şişe";
+        bottle.transform.SetParent(root.transform, false);
+        bottle.transform.localPosition = new Vector3(0f, 0.19f, 0f);
+        bottle.transform.localScale = new Vector3(0.16f, 0.18f, 0.16f);
+        bottle.GetComponent<Renderer>().sharedMaterial = bottleMaterial;
+        CreateChildCylinder(root.transform, "Şişe Boynu", new Vector3(0f, 0.385f, 0f), new Vector3(0.055f, 0.06f, 0.055f), detailMaterial);
+        CreateChildCylinder(root.transform, "Şişe Kapağı", new Vector3(0f, 0.445f, 0f), new Vector3(0.065f, 0.035f, 0.065f), yellowBottleCap);
+        CreateChildBox(root.transform, "Şişe Etiketi", new Vector3(0f, 0.18f, -0.075f), new Vector3(0.12f, 0.10f, 0.012f), detailMaterial);
+        return root;
+    }
+
+    private GameObject CreateFirstAidPack(Material packMaterial, Material crossMaterial)
+    {
+        GameObject root = CreateBagItemRoot();
+        CreateChildBox(root.transform, "Kırmızı İlk Yardım Kesesi", new Vector3(0f, 0.12f, 0f),
+            new Vector3(0.40f, 0.22f, 0.30f), packMaterial);
+        CreateChildBox(root.transform, "Beyaz Artı Dikey", new Vector3(0f, 0.14f, -0.157f),
+            new Vector3(0.07f, 0.15f, 0.018f), crossMaterial);
+        CreateChildBox(root.transform, "Beyaz Artı Yatay", new Vector3(0f, 0.14f, -0.16f),
+            new Vector3(0.18f, 0.06f, 0.02f), crossMaterial);
+        CreateChildBox(root.transform, "Kese Fermuarı", new Vector3(0f, 0.245f, 0f),
+            new Vector3(0.31f, 0.025f, 0.24f), crossMaterial);
+        CreateChildBox(root.transform, "Taşıma Sapı", new Vector3(0f, 0.275f, 0f),
+            new Vector3(0.18f, 0.045f, 0.07f), packMaterial);
+        return root;
+    }
+
+    private GameObject CreateFlashlight(Material bodyMaterial, Material lensMaterial, Material metalMaterial)
+    {
+        GameObject root = CreateBagItemRoot();
+        CreateChildCylinder(root.transform, "El Feneri Gövdesi", new Vector3(0f, 0.08f, 0f),
+            new Vector3(0.065f, 0.14f, 0.065f), bodyMaterial, Quaternion.Euler(0f, 0f, 90f));
+        CreateChildCylinder(root.transform, "Geniş Fener Başlığı", new Vector3(0.15f, 0.08f, 0f),
+            new Vector3(0.10f, 0.055f, 0.10f), metalMaterial, Quaternion.Euler(0f, 0f, 90f));
+        // Mercek yüzü avuç kamerasına döner; gövdenin uzun ekseni parmak yönünde kalır.
+        CreateChildCylinder(root.transform, "Kameraya Bakan Fener Merceği", new Vector3(0.15f, 0.08f, -0.102f),
+            new Vector3(0.078f, 0.018f, 0.078f), lensMaterial, Quaternion.Euler(90f, 0f, 0f));
+        CreateChildBox(root.transform, "Fener Düğmesi", new Vector3(-0.04f, 0.148f, 0f),
+            new Vector3(0.055f, 0.025f, 0.045f), lensMaterial);
+        for (int i = 0; i < 3; i++)
+            CreateChildBox(root.transform, "Fener Kavrama Çizgisi", new Vector3(-0.08f + i * 0.055f, 0.08f, -0.068f),
+                new Vector3(0.018f, 0.08f, 0.012f), metalMaterial);
+        return root;
+    }
+
+    private GameObject CreateRadio(Material bodyMaterial, Material detailMaterial, Material metalMaterial)
+    {
+        GameObject root = CreateBagItemRoot();
+        CreateChildBox(root.transform, "Telsiz Ana Gövde", new Vector3(0f, 0.12f, 0f),
+            new Vector3(0.38f, 0.22f, 0.24f), bodyMaterial);
+        CreateChildBox(root.transform, "Telsiz Ekranı", new Vector3(-0.075f, 0.14f, -0.128f),
+            new Vector3(0.13f, 0.085f, 0.018f), detailMaterial);
+        CreateChildBox(root.transform, "Telsiz Hoparlör Paneli", new Vector3(0.105f, 0.13f, -0.13f),
+            new Vector3(0.13f, 0.12f, 0.018f), metalMaterial);
+        for (int i = 0; i < 4; i++)
+            CreateChildBox(root.transform, "Hoparlör Izgarası", new Vector3(0.105f, 0.09f + i * 0.025f, -0.143f),
+                new Vector3(0.09f, 0.008f, 0.008f), bodyMaterial);
+        CreateChildCylinder(root.transform, "Telsiz Kanal Düğmesi", new Vector3(0.12f, 0.245f, -0.09f),
+            new Vector3(0.035f, 0.025f, 0.035f), detailMaterial);
+        CreateChildCylinder(root.transform, "Telsiz Ses Düğmesi", new Vector3(0.19f, 0.245f, -0.09f),
+            new Vector3(0.028f, 0.025f, 0.028f), metalMaterial);
+        CreateChildCylinder(root.transform, "Telsiz Anteni", new Vector3(-0.15f, 0.29f, 0.04f),
+            new Vector3(0.012f, 0.16f, 0.012f), metalMaterial, Quaternion.Euler(0f, 0f, -12f));
+        return root;
+    }
+
+    private GameObject CreateFoodPack(Material bodyMaterial, Material detailMaterial)
+    {
+        GameObject root = CreateBagItemRoot();
+        CreateChildBox(root.transform, "Gıda Paketi", new Vector3(0f, 0.11f, 0f),
+            new Vector3(0.34f, 0.20f, 0.26f), bodyMaterial);
+        CreateChildBox(root.transform, "Paket Üst Kaynağı", new Vector3(0f, 0.218f, 0f),
+            new Vector3(0.35f, 0.018f, 0.27f), detailMaterial);
+        CreateChildBox(root.transform, "Paket Ön Etiketi", new Vector3(0f, 0.12f, -0.135f),
+            new Vector3(0.22f, 0.11f, 0.012f), detailMaterial);
+        CreateChildCylinder(root.transform, "Paket Sembolü", new Vector3(0f, 0.12f, -0.15f),
+            new Vector3(0.035f, 0.018f, 0.035f), bodyMaterial);
+        return root;
+    }
+
+    private GameObject CreateWhistle(Material bodyMaterial, Material detailMaterial, Material apertureMaterial)
+    {
+        GameObject root = CreateBagItemRoot();
+        CreateChildCylinder(root.transform, "Düdük Gövdesi", new Vector3(0f, 0.045f, 0f),
+            new Vector3(0.038f, 0.12f, 0.038f), bodyMaterial, Quaternion.Euler(0f, 0f, 90f));
+        CreateChildCylinder(root.transform, "Düdük Ağızlığı", new Vector3(0.12f, 0.045f, 0f),
+            new Vector3(0.045f, 0.045f, 0.045f), detailMaterial, Quaternion.Euler(0f, 0f, 90f));
+        CreateChildBox(root.transform, "Kameraya Bakan Düdük Açıklığı", new Vector3(0.12f, 0.045f, -0.047f),
+            new Vector3(0.028f, 0.022f, 0.006f), apertureMaterial);
+        CreateChildCylinder(root.transform, "Düdük Halkası", new Vector3(-0.10f, 0.045f, 0f),
+            new Vector3(0.055f, 0.018f, 0.055f), detailMaterial, Quaternion.Euler(90f, 0f, 0f));
+        return root;
+    }
+
+    private GameObject CreateChildCylinder(Transform parent, string name, Vector3 localPosition,
+        Vector3 localScale, Material material, Quaternion? localRotation = null)
+    {
+        GameObject cylinder = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        cylinder.name = name;
+        cylinder.transform.SetParent(parent, false);
+        cylinder.transform.localPosition = localPosition;
+        cylinder.transform.localScale = localScale;
+        if (localRotation.HasValue)
+            cylinder.transform.localRotation = localRotation.Value;
+        cylinder.GetComponent<Renderer>().sharedMaterial = material;
+        return cylinder;
+    }
+
     private void BuildGasValve(Material brassMat, Material pipeMat)
     {
         CreateBox("Duvar Gaz Borusu", new Vector3(6.55f, 0.75f, -3.25f), new Vector3(0.08f, 1.5f, 0.08f), pipeMat);
@@ -351,7 +600,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         GameManager.Instance?.StartScenario();
         ui.ShowHud();
         SetPlayerControls(true);
-        ShowNotice("Hazırlık görevlerini tamamla. E ile nesnelerle etkileş.");
+        ShowNotice("Hazırlık görevlerini tamamla. E veya sol tıkla nesnelerle etkileş.");
     }
 
     public void StartEarthquake()
@@ -473,7 +722,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     public void RefreshHud(string phase, string tasks, string shelter, string valve, string windows, string exit, int score, float holdProgress)
     {
         if (ui != null)
-            ui.RefreshHud(phase, tasks, shelter, valve, windows, exit, score, holdProgress, scenario != null && scenario.PreparationComplete());
+            ui.RefreshHud(phase, tasks, shelter, valve, windows, exit, score, holdProgress,
+                scenario != null ? scenario.PreparationCountdownRemaining : 0f);
     }
 
     public void ShowResults(int score, string review)

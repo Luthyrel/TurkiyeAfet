@@ -21,6 +21,16 @@ public sealed class PrototypePlayerController : MonoBehaviour
     private Animator characterAnimator;
     private Transform characterVisual;
     private Renderer[] characterRenderers;
+    private Transform firstPersonItemAnchor;
+    private GameObject firstPersonHandVisual;
+    private Transform firstPersonWristBone;
+    private Transform firstPersonIndexRoot;
+    private Transform firstPersonMiddleRoot;
+    private Transform firstPersonRingRoot;
+    private Transform firstPersonPinkyRoot;
+    private Transform rightHandBone;
+    private Transform rightLowerArmBone;
+    private PrototypeInteractable heldBagItem;
     private float cameraYaw;
     private float cameraPitch = 12f;
     private float cameraHeight;
@@ -104,6 +114,27 @@ public sealed class PrototypePlayerController : MonoBehaviour
 
     public Vector3 CameraPosition => playerCamera != null ? playerCamera.transform.position : transform.position;
 
+    public void HoldBagItem(PrototypeInteractable item)
+    {
+        if (item == null)
+            return;
+
+        item.CacheOriginalVisualSize();
+        item.SetHeld(true);
+        heldBagItem = item;
+        UpdateHeldItemPresentation(true);
+    }
+
+    public void ReleaseBagItem(PrototypeInteractable item)
+    {
+        if (heldBagItem != item)
+            return;
+
+        heldBagItem = null;
+        if (firstPersonHandVisual != null)
+            firstPersonHandVisual.SetActive(false);
+    }
+
     public void Initialize(PrototypeScenario activeScenario, Vector3 spawnPosition, float yaw)
     {
         scenario = activeScenario;
@@ -133,6 +164,8 @@ public sealed class PrototypePlayerController : MonoBehaviour
             Quaternion.Euler(cameraPitch, cameraYaw, 0f));
 
         LoadCharacter();
+        CacheRightHandBone();
+        SetupFirstPersonItemAnchor();
     }
 
     private void LoadCharacter()
@@ -357,6 +390,299 @@ public sealed class PrototypePlayerController : MonoBehaviour
 
         playerCamera.transform.position = cameraPosition;
         playerCamera.transform.rotation = desiredRotation;
+        UpdateHeldItemPresentation(false);
+    }
+
+    private void CacheRightHandBone()
+    {
+        rightHandBone = characterAnimator != null && characterAnimator.avatar != null
+            && characterAnimator.avatar.isHuman
+            ? characterAnimator.GetBoneTransform(HumanBodyBones.RightHand)
+            : null;
+        rightLowerArmBone = characterAnimator != null && characterAnimator.avatar != null
+            && characterAnimator.avatar.isHuman
+            ? characterAnimator.GetBoneTransform(HumanBodyBones.RightLowerArm)
+            : null;
+    }
+
+    private void SetupFirstPersonItemAnchor()
+    {
+        if (playerCamera == null)
+            return;
+
+        GameObject itemAnchor = new GameObject("Birinci Şahıs Eşya Yuvası");
+        firstPersonItemAnchor = itemAnchor.transform;
+        firstPersonItemAnchor.SetParent(playerCamera.transform, false);
+        firstPersonItemAnchor.localPosition = new Vector3(0.72f, -0.42f, 0.69f);
+
+        GameObject armPrefab = Resources.Load<GameObject>("WRADRightArm");
+        if (armPrefab == null)
+        {
+            Debug.LogError("WRADRightArm modeli Resources içinde bulunamadı.");
+            return;
+        }
+
+        firstPersonHandVisual = Instantiate(armPrefab, playerCamera.transform, false);
+        firstPersonHandVisual.name = "WRAD Tek Parça Sağ El ve Ön Kol";
+        firstPersonHandVisual.transform.localPosition = Vector3.zero;
+        firstPersonHandVisual.transform.localRotation = Quaternion.identity;
+        firstPersonHandVisual.transform.localScale = Vector3.one * 0.12f;
+        ApplyFirstPersonSkinTexture(firstPersonHandVisual);
+
+        firstPersonWristBone = FindHandBone(firstPersonHandVisual.transform, "wrist.r");
+        Transform forearmBone = FindHandBone(firstPersonHandVisual.transform, "forearm.r");
+        firstPersonIndexRoot = FindHandBone(firstPersonHandVisual.transform, "finger_index1.r");
+        firstPersonMiddleRoot = FindHandBone(firstPersonHandVisual.transform, "finger_middle1.r");
+        firstPersonRingRoot = FindHandBone(firstPersonHandVisual.transform, "finger_ring1.r");
+        firstPersonPinkyRoot = FindHandBone(firstPersonHandVisual.transform, "finger_pinky1.r");
+        if (firstPersonWristBone == null || forearmBone == null || firstPersonIndexRoot == null
+            || firstPersonMiddleRoot == null || firstPersonRingRoot == null || firstPersonPinkyRoot == null)
+        {
+            Debug.LogError("WRAD sağ kol modelinde bilek veya parmak kemikleri bulunamadı.");
+            firstPersonHandVisual.SetActive(false);
+            return;
+        }
+
+        PoseFirstPersonHandGrip(firstPersonHandVisual.transform);
+
+        Vector3 wristRoot = firstPersonHandVisual.transform.InverseTransformPoint(firstPersonWristBone.position);
+        Vector3 elbowRoot = firstPersonHandVisual.transform.InverseTransformPoint(forearmBone.position);
+        Vector3 armAxis = (elbowRoot - wristRoot).normalized;
+        Vector3 wristTarget = new Vector3(0.72f, -0.52f, 0.84f);
+        Vector3 elbowTarget = new Vector3(1.15f, -0.94f, 0.68f);
+        Vector3 targetArmAxis = (elbowTarget - wristTarget).normalized;
+        Quaternion alignArm = Quaternion.FromToRotation(armAxis, targetArmAxis);
+
+        Vector3 indexLocal = firstPersonHandVisual.transform.InverseTransformPoint(firstPersonIndexRoot.position);
+        Vector3 middleLocal = firstPersonHandVisual.transform.InverseTransformPoint(firstPersonMiddleRoot.position);
+        Vector3 pinkyLocal = firstPersonHandVisual.transform.InverseTransformPoint(firstPersonPinkyRoot.position);
+        Vector3 palmNormal = Vector3.Cross(middleLocal - wristRoot, indexLocal - pinkyLocal).normalized;
+        Vector3 alignedPalmNormal = alignArm * palmNormal;
+        Vector3 cameraFacingNormal = Vector3.ProjectOnPlane(-Vector3.forward, targetArmAxis).normalized;
+        float palmTwist = Vector3.SignedAngle(alignedPalmNormal, cameraFacingNormal, targetArmAxis);
+        firstPersonHandVisual.transform.localRotation = Quaternion.AngleAxis(palmTwist, targetArmAxis) * alignArm;
+
+        Vector3 wristBefore = playerCamera.transform.InverseTransformPoint(firstPersonWristBone.position);
+        firstPersonHandVisual.transform.localPosition += wristTarget - wristBefore;
+
+        RefreshFirstPersonGripAnchor();
+        firstPersonHandVisual.SetActive(false);
+    }
+
+    private void RefreshFirstPersonGripAnchor(float itemDepthOffset = 0f, float palmAdvance = 0f)
+    {
+        if (firstPersonItemAnchor == null || playerCamera == null || firstPersonWristBone == null
+            || firstPersonIndexRoot == null || firstPersonMiddleRoot == null
+            || firstPersonRingRoot == null || firstPersonPinkyRoot == null)
+            return;
+
+        Vector3 knuckleCenter = (firstPersonIndexRoot.position + firstPersonMiddleRoot.position
+            + firstPersonRingRoot.position + firstPersonPinkyRoot.position) * 0.25f;
+        Vector3 wristToKnuckles = knuckleCenter - firstPersonWristBone.position;
+        Vector3 fingerAxis = wristToKnuckles.normalized;
+        Vector3 acrossPalm = Vector3.ProjectOnPlane(
+            firstPersonIndexRoot.position - firstPersonPinkyRoot.position, fingerAxis).normalized;
+        Vector3 palmNormal = Vector3.Cross(acrossPalm, fingerAxis).normalized;
+        Vector3 palmCenter = Vector3.Lerp(firstPersonWristBone.position, knuckleCenter, 0.68f)
+            + fingerAxis * wristToKnuckles.magnitude * palmAdvance;
+        Vector3 towardViewer = (playerCamera.transform.position - palmCenter).normalized;
+        if (Vector3.Dot(palmNormal, towardViewer) < 0f)
+            palmNormal = -palmNormal;
+
+        // The palm frame comes from wrist/knuckle geometry. Local +Y follows the fingers,
+        // and local -Z faces out through the palm toward the held object and camera.
+        Quaternion palmFrame = Quaternion.LookRotation(-palmNormal, fingerAxis);
+        firstPersonItemAnchor.position = palmCenter + palmNormal * (0.006f + itemDepthOffset);
+        firstPersonItemAnchor.rotation = palmFrame;
+    }
+
+    private void ApplyFirstPersonSkinTexture(GameObject handRoot)
+    {
+        Texture2D skinTexture = Resources.Load<Texture2D>("WRADArmTanBase");
+        if (skinTexture == null)
+        {
+            Debug.LogWarning("WRAD kol ten dokusu Resources içinde bulunamadı.");
+            return;
+        }
+
+        SkinnedMeshRenderer[] renderers = handRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+        for (int rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
+        {
+            Material[] materials = renderers[rendererIndex].materials;
+            for (int materialIndex = 0; materialIndex < materials.Length; materialIndex++)
+            {
+                Material material = materials[materialIndex];
+                if (material == null)
+                    continue;
+                material.mainTexture = skinTexture;
+                if (material.HasProperty("_BaseMap"))
+                    material.SetTexture("_BaseMap", skinTexture);
+                if (material.HasProperty("_MainTex"))
+                    material.SetTexture("_MainTex", skinTexture);
+                Color warmSkinTint = new Color(1.08f, 1.04f, 0.96f, 1f);
+                if (material.HasProperty("_BaseColor"))
+                    material.SetColor("_BaseColor", warmSkinTint);
+                if (material.HasProperty("_Color"))
+                    material.SetColor("_Color", warmSkinTint);
+            }
+            renderers[rendererIndex].SetPropertyBlock(null);
+            renderers[rendererIndex].materials = materials;
+        }
+    }
+
+    private Transform FindHandBone(Transform handRoot, string boneName)
+    {
+        Transform[] bones = handRoot.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < bones.Length; i++)
+        {
+            if (bones[i].name == boneName)
+                return bones[i];
+        }
+        return null;
+    }
+    private void PoseFirstPersonHandGrip(Transform handRoot)
+    {
+        // Varlığın iskeletindeki dört parmak ve başparmak, avuç içine kapanır.
+        ApplyFingerCurl(handRoot, "finger_index", 18f, 30f, 16f);
+        ApplyFingerCurl(handRoot, "finger_middle", 20f, 34f, 18f);
+        ApplyFingerCurl(handRoot, "finger_ring", 22f, 36f, 20f);
+        ApplyFingerCurl(handRoot, "finger_pinky", 24f, 38f, 22f);
+        ApplyFingerCurl(handRoot, "finger_thumb", 18f, 26f, 14f);
+    }
+
+    private void ApplyFingerCurl(Transform handRoot, string fingerName, float first, float second, float third)
+    {
+        ApplyBoneCurl(handRoot, fingerName + "1.r", first);
+        ApplyBoneCurl(handRoot, fingerName + "2.r", second);
+        ApplyBoneCurl(handRoot, fingerName + "3.r", third);
+    }
+
+    private void ApplyBoneCurl(Transform handRoot, string boneName, float degrees)
+    {
+        Transform[] bones = handRoot.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < bones.Length; i++)
+        {
+            if (bones[i].name != boneName)
+                continue;
+
+            bones[i].localRotation *= Quaternion.Euler(degrees, 0f, 0f);
+            return;
+        }
+    }
+
+    private void UpdateHeldItemPresentation(bool forceReparent)
+    {
+        if (heldBagItem == null || playerCamera == null)
+            return;
+
+        bool thirdPerson = crouched || holdingTable;
+        bool useWorldHandPosition = thirdPerson && rightHandBone != null;
+        bool showFirstPersonHand = !useWorldHandPosition;
+        if (firstPersonHandVisual != null && firstPersonHandVisual.activeSelf != showFirstPersonHand)
+            firstPersonHandVisual.SetActive(showFirstPersonHand);
+
+        float originalSize = heldBagItem.CacheOriginalVisualSize();
+        if (useWorldHandPosition)
+        {
+            if (heldBagItem.transform.parent != null || forceReparent)
+                heldBagItem.transform.SetParent(null, true);
+
+            // Keep the item at the animated wrist in world units. Hand-bone scale varies
+            // between imported rigs, so the item itself stays outside that scaled hierarchy.
+            Vector3 towardCamera = (playerCamera.transform.position - rightHandBone.position).normalized;
+            Quaternion facingCamera = Quaternion.LookRotation(-towardCamera, Vector3.up);
+            float worldScale = 0.18f / originalSize;
+            heldBagItem.transform.rotation = facingCamera;
+            heldBagItem.transform.localScale = Vector3.one * worldScale;
+            Vector3 forearmDirection = rightLowerArmBone != null
+                ? rightHandBone.position - rightLowerArmBone.position
+                : transform.forward;
+            if (forearmDirection.sqrMagnitude < 0.0001f)
+                forearmDirection = transform.forward;
+            forearmDirection.Normalize();
+            Vector3 handCenter = rightHandBone.position
+                + forearmDirection * 0.15f
+                + towardCamera * 0.035f;
+            Vector3 visualCenterOffset = facingCamera * (heldBagItem.OriginalVisualCenterOffset * worldScale);
+            heldBagItem.transform.position = handCenter - visualCenterOffset;
+            return;
+        }
+
+        Transform holder = firstPersonItemAnchor != null ? firstPersonItemAnchor : playerCamera.transform;
+        if (forceReparent || heldBagItem.transform.parent != holder)
+            heldBagItem.transform.SetParent(holder, false);
+
+        heldBagItem.transform.localRotation = Quaternion.identity;
+        Vector3 inherited = holder.lossyScale;
+        float inheritedScale = Mathf.Max(Mathf.Abs(inherited.x), Mathf.Abs(inherited.y), Mathf.Abs(inherited.z), 0.001f);
+        float desiredSize = GetFirstPersonHeldItemSize(heldBagItem.ActionName);
+        float localScale = desiredSize / (originalSize * inheritedScale);
+        heldBagItem.transform.localScale = Vector3.one * localScale;
+
+        Quaternion gripCorrection = Quaternion.identity;
+        if (firstPersonItemAnchor != null)
+        {
+            gripCorrection = GetGripAxisCorrection(heldBagItem.HeldGripAxis, heldBagItem.HeldGripDirection,
+                heldBagItem.HeldGripFaceAxis);
+            Vector3 itemBounds = heldBagItem.OriginalVisualBoundsSize;
+            float itemDepth = GetGripFrameDepth(itemBounds, gripCorrection) * localScale * inheritedScale;
+            float palmAdvanceRatio = 0f;
+            if (string.Equals(heldBagItem.ActionName, "Acil durum radyosu", System.StringComparison.OrdinalIgnoreCase))
+                palmAdvanceRatio = 0.25f;
+            else if (string.Equals(heldBagItem.ActionName, "El feneri", System.StringComparison.OrdinalIgnoreCase))
+                palmAdvanceRatio = 0.10f;
+            else if (string.Equals(heldBagItem.ActionName, "Düdük", System.StringComparison.OrdinalIgnoreCase))
+                palmAdvanceRatio = 0.16f;
+            RefreshFirstPersonGripAnchor(itemDepth * 0.5f + 0.006f, palmAdvanceRatio);
+            if (string.Equals(heldBagItem.ActionName, "Acil durum radyosu", System.StringComparison.OrdinalIgnoreCase))
+                firstPersonItemAnchor.position += playerCamera.transform.right * 0.04f;
+            firstPersonItemAnchor.localRotation *= gripCorrection;
+        }
+
+        // The item is a child of the corrected anchor, so this local offset stays in model axes.
+        Vector3 firstPersonVisualCenterOffset = heldBagItem.OriginalVisualCenterOffset;
+        heldBagItem.transform.localPosition = -firstPersonVisualCenterOffset * localScale;
+    }
+
+    private float GetGripFrameDepth(Vector3 modelBoundsSize, Quaternion gripCorrection)
+    {
+        Vector3 correctedX = gripCorrection * Vector3.right;
+        Vector3 correctedY = gripCorrection * Vector3.up;
+        Vector3 correctedZ = gripCorrection * Vector3.forward;
+        return Mathf.Abs(correctedX.z) * modelBoundsSize.x
+            + Mathf.Abs(correctedY.z) * modelBoundsSize.y
+            + Mathf.Abs(correctedZ.z) * modelBoundsSize.z;
+    }
+
+    private Quaternion GetGripAxisCorrection(Vector3 localGripAxis, Vector3 targetPalmDirection, Vector3 localFaceAxis)
+    {
+        // Uzun eksen tek başına yüzün hangi tarafa bakacağını belirlemez; iki ekseni birlikte hizala.
+        Vector3 sourceUp = localGripAxis.sqrMagnitude > 0.0001f ? localGripAxis.normalized : Vector3.up;
+        Vector3 sourceForward = Vector3.ProjectOnPlane(localFaceAxis, sourceUp).normalized;
+        Vector3 targetUp = targetPalmDirection.sqrMagnitude > 0.0001f ? targetPalmDirection.normalized : Vector3.up;
+        Vector3 targetForward = Vector3.ProjectOnPlane(Vector3.back, targetUp).normalized;
+        if (sourceForward.sqrMagnitude < 0.0001f || targetForward.sqrMagnitude < 0.0001f)
+            return Quaternion.FromToRotation(sourceUp, targetUp);
+
+        Quaternion sourceFrame = Quaternion.LookRotation(sourceForward, sourceUp);
+        Quaternion targetFrame = Quaternion.LookRotation(targetForward, targetUp);
+        return targetFrame * Quaternion.Inverse(sourceFrame);
+    }
+
+    private float GetFirstPersonHeldItemSize(string actionName)
+    {
+        if (string.Equals(actionName, "El feneri", System.StringComparison.OrdinalIgnoreCase))
+            return 0.15f;
+        if (string.Equals(actionName, "Su şişesi", System.StringComparison.OrdinalIgnoreCase))
+            return 0.12f;
+        if (string.Equals(actionName, "Düdük", System.StringComparison.OrdinalIgnoreCase))
+            return 0.13f;
+        if (string.Equals(actionName, "İlk yardım çantası", System.StringComparison.OrdinalIgnoreCase))
+            return 0.10f;
+        if (string.Equals(actionName, "Acil durum radyosu", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(actionName, "Uzun ömürlü gıda", System.StringComparison.OrdinalIgnoreCase))
+            return 0.11f;
+        return 0.12f;
     }
 
     private void ReadLook()
@@ -377,48 +703,38 @@ public sealed class PrototypePlayerController : MonoBehaviour
 
     private void ReadActions()
     {
-        if (Keyboard.current == null)
-            return;
+        Keyboard keyboard = Keyboard.current;
+        Mouse mouse = Mouse.current;
 
-        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+        if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
         {
             PrototypeBootstrap.Instance.TogglePause();
             return;
         }
 
-        if (scenario != null && scenario.CurrentPhase == PrototypeScenario.Phase.Preparation
-            && scenario.PreparationComplete()
-            && (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame))
-        {
-            scenario.StartEarthquake();
-            return;
-        }
-
-        if (Keyboard.current.cKey.wasPressedThisFrame)
+        if (keyboard != null && keyboard.cKey.wasPressedThisFrame)
         {
             if (holdingTable && scenario != null)
-                scenario.CancelTableHold("Tutunmayı bıraktın. Sarsıntı sürerken yeniden güvenli konuma geçip E'ye bas.");
+                scenario.CancelTableHold("Tutunmayı bıraktın. Sarsıntı sürerken yeniden güvenli konuma geçip E veya sol tıkla tutun.");
             crouched = !crouched;
             return;
         }
 
-        if (scenario != null && scenario.IsShaking)
+        bool interactPressed = (keyboard != null && keyboard.eKey.wasPressedThisFrame)
+            || (mouse != null && mouse.leftButton.wasPressedThisFrame);
+        if (!interactPressed || scenario == null)
+            return;
+
+        if (scenario.IsShaking)
         {
-            if (Keyboard.current.eKey.wasPressedThisFrame)
-            {
-                if (holdingTable)
-                    scenario.CancelTableHold("Tutunmayı bıraktın. Güvenli pozisyonu 5 saniye korumazsan görev tamamlanmaz.");
-                else
-                    scenario.TryStartTableHold();
-            }
+            if (holdingTable)
+                scenario.CancelTableHold("Tutunmayı bıraktın. Güvenli pozisyonu 5 saniye korumazsan görev tamamlanmaz.");
+            else
+                scenario.TryStartTableHold();
             return;
         }
 
-        if (Keyboard.current.eKey.wasPressedThisFrame && scenario != null)
-        {
-            PrototypeInteractable target = FindLookTarget();
-            scenario.TryInteract(target);
-        }
+        scenario.TryInteract(FindLookTarget());
     }
 
     private void ReadMovement()
@@ -556,17 +872,47 @@ public sealed class PrototypePlayerController : MonoBehaviour
             return;
         }
 
+        if (target.Action == PrototypeAction.PrepareDisasterBag)
+        {
+            string bagPrompt = !scenario.IsDisasterBagOpen
+                ? "Afet çantası  •  [E / Sol tık] Aç"
+                : scenario.HasItemInHand
+                    ? "Afet çantası  •  [E / Sol tık] İçine koy"
+                    : "Afet çantası  •  Eşya koy veya tekrar etkileşip bonusu atla";
+            PrototypeBootstrap.Instance.SetPrompt(bagPrompt);
+            return;
+        }
+
+        if (target.Action == PrototypeAction.CollectBagItem)
+        {
+            string itemPrompt = scenario.HasItemInHand
+                ? "Önce elindekini çantaya koy."
+                : !scenario.IsDisasterBagOpen
+                    ? target.TargetDisplayName + "  •  Önce afet çantasını aç"
+                    : target.TargetDisplayName + "  •  [E / Sol tık] Al";
+            PrototypeBootstrap.Instance.SetPrompt(itemPrompt);
+            return;
+        }
+
+        if (target.Action == PrototypeAction.OpenExitDoor)
+        {
+            PrototypeBootstrap.Instance.SetPrompt(scenario.IsPostQuake
+                ? target.TargetDisplayName + "  •  [E / Sol tık] Aç"
+                : "Kapı deprem bittikten sonra açılabilir.");
+            return;
+        }
+
         if (target.Action == PrototypeAction.ShutGasValve || target.Action == PrototypeAction.OpenWindows)
         {
             PrototypeBootstrap.Instance.SetPrompt(scenario.IsPostQuake
-                ? target.TargetDisplayName + "  •  [E] " + target.ActionName
+                ? target.TargetDisplayName + "  •  [E / Sol tık] " + target.ActionName
                 : "Bu görev sarsıntı durduktan sonra açılır.");
             return;
         }
 
         PrototypeInteractable active = scenario.CurrentPreparationTarget;
         string action = target == active
-            ? target.TargetDisplayName + "  •  [E] " + target.ActionName
+            ? target.TargetDisplayName + "  •  [E / Sol tık] " + target.ActionName
             : active != null ? "Önce aktif hedef: " + active.TargetDisplayName + "  •  " + active.ActionName
             : "Bu nesne şu an görev hedefi değil.";
         PrototypeBootstrap.Instance.SetPrompt(action);
@@ -585,11 +931,17 @@ public sealed class PrototypePlayerController : MonoBehaviour
             targetPosition = scenario.HoldZonePosition;
             targetName = "Sağlam masa";
             action = scenario != null && scenario.HasTableProtectionAnimation
-                ? "Güvenli bölge • C ile çök • E ile tutun"
+                ? "Güvenli bölge • C ile çök • E veya sol tıkla tutun"
                 : "Güvenli bölge • C ile çök";
         }
         else
         {
+            if (scenario.IsDisasterBagOpen)
+            {
+                PrototypeBootstrap.Instance.HideTargetGuide();
+                return;
+            }
+
             PrototypeInteractable target = scenario.CurrentPreparationTarget;
             if (target == null)
             {

@@ -128,7 +128,7 @@ public sealed class PrototypeUI : MonoBehaviour
             ShowProvincePage);
         continueButton = AddButton(card, "Devam Et", hasSavedProgress ? "KAYITLI İLERLEME" : "KAYIT YOK",
             new Vector2(0.08f, 0.30f), new Vector2(0.92f, 0.44f), false, ShowSavedProgress);
-        AddText(card, "Kontroller", "WASD hareket   •   Fare bakış   •   E etkileşim\nShift koş   •   C çök   •   Esc duraklat",
+        AddText(card, "Kontroller", "WASD hareket   •   Fare bakış   •   E / Sol tık etkileşim\nShift koş   •   C çök   •   Esc duraklat",
             new Vector2(0.08f, 0.08f), new Vector2(0.92f, 0.25f), 16, new Color32(175, 193, 208, 255), TextAnchor.MiddleLeft);
         AddText(mainPage.transform, "Alt Bilgi", "3D OYNANABİLİR PROTOTİP     •     TÜRKÇE     •     WINDOWS",
             new Vector2(0.07f, 0.035f), new Vector2(0.93f, 0.085f), 15, new Color32(112, 137, 158, 255), TextAnchor.MiddleLeft);
@@ -225,9 +225,9 @@ public sealed class PrototypeUI : MonoBehaviour
 
         AddText(hudPage.transform, "Nişangâh", "•", new Vector2(0.49f, 0.48f), new Vector2(0.51f, 0.52f),
             26, new Color32(255, 255, 255, 220), TextAnchor.MiddleCenter);
-        noticeText = AddText(hudPage.transform, "Bilgilendirme", "", new Vector2(0.28f, 0.82f), new Vector2(0.72f, 0.94f),
+        noticeText = AddText(hudPage.transform, "Bilgilendirme", "", new Vector2(0.20f, 0.20f), new Vector2(0.80f, 0.30f),
             21, new Color32(255, 225, 164, 255), TextAnchor.MiddleCenter);
-        quakeStartHint = AddText(hudPage.transform, "Sarsıntı Klavye İpucu", "",
+        quakeStartHint = AddText(hudPage.transform, "Deprem Geri Sayımı", "",
             new Vector2(0.70f, 0.86f), new Vector2(0.98f, 0.94f), 17,
             new Color32(255, 225, 164, 255), TextAnchor.MiddleRight);
 
@@ -403,13 +403,13 @@ public sealed class PrototypeUI : MonoBehaviour
     public void ShowResults(int score, string review)
     {
         resultTitle.text = "Tatbikat tamamlandı";
-        resultScore.text = "PUAN   " + score + " / 700";
+        resultScore.text = "PUAN   " + score + " puan";
         resultReview.text = review;
         SetPages(resultPage);
         owner.SetPlayerControls(false);
     }
 
-    public void RefreshHud(string phase, string tasks, string shelter, string valve, string windows, string exit, int score, float holdProgress, bool canStart)
+    public void RefreshHud(string phase, string tasks, string shelter, string valve, string windows, string exit, int score, float holdProgress, float preparationCountdown)
     {
         if (phaseText == null)
             return;
@@ -427,7 +427,7 @@ public sealed class PrototypeUI : MonoBehaviour
             string hold = holdDone
                 ? "✓ Masaya tutunma: tamamlandı"
                 : holding ? "◉ Masaya tutunma: sürüyor"
-                : "○ Masaya tutunma: E ile başlat";
+                : "○ Masaya tutunma: E veya sol tıkla başlat";
             string progress = holdProgress > 0f && !holdDone
                 ? "\nGüvenli pozisyonu koru: " + Mathf.RoundToInt(holdProgress * 100f) + "%"
                 : string.Empty;
@@ -439,8 +439,10 @@ public sealed class PrototypeUI : MonoBehaviour
         else
             fullTasks = shelter + "\n" + valve + "\n" + windows + "\n" + exit;
         taskText.text = fullTasks;
-        scoreText.text = "PUAN   " + score + " / 700";
-        quakeStartHint.text = canStart ? "ENTER   •   SARSINTI TATBİKATINI BAŞLAT" : string.Empty;
+        scoreText.text = "PUAN   " + score;
+        quakeStartHint.text = preparationCountdown > 0.05f
+            ? "DEPREM " + Mathf.CeilToInt(preparationCountdown) + " SANİYE İÇİNDE BAŞLIYOR"
+            : string.Empty;
     }
 
     public void UpdateTargetGuide(Camera camera, Vector3 targetPosition, bool unobstructed,
