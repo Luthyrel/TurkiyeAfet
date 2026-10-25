@@ -33,6 +33,12 @@ public sealed class PrototypeUI : MonoBehaviour
     private Text quakeStartHint;
     private RectTransform targetGuideRect;
     private Text targetGuideText;
+    private GameObject trappedOverlay;
+    private Image trappedOverlayImage;
+    private Text trappedTitle;
+    private Text trappedQuestion;
+    private Text trappedFeedback;
+    private Button[] trappedChoiceButtons;
     private Button provinceContinueButton;
     private Button continueButton;
     private ProvinceMapView provinceMapView;
@@ -231,6 +237,31 @@ public sealed class PrototypeUI : MonoBehaviour
         targetGuideText = AddText(targetGuideRect, "Hedef Adı", "", Vector2.zero, Vector2.one, 16,
             new Color32(235, 248, 244, 255), TextAnchor.MiddleCenter);
         targetGuideRect.gameObject.SetActive(false);
+        BuildTrappedOverlay();
+    }
+
+    private void BuildTrappedOverlay()
+    {
+        RectTransform panel = MakeRect(hudPage.transform, "Enkaz Altı Ekranı", Vector2.zero, Vector2.one);
+        trappedOverlay = panel.gameObject;
+        trappedOverlayImage = AddImage(trappedOverlay, Color.black);
+        trappedOverlay.transform.SetAsLastSibling();
+        trappedTitle = AddText(panel, "Enkaz Başlığı", "ENKAZ ALTINDASIN", new Vector2(0.10f, 0.79f),
+            new Vector2(0.90f, 0.91f), 34, new Color32(255, 206, 123, 255), TextAnchor.MiddleCenter);
+        trappedQuestion = AddText(panel, "Enkaz Sorusu", "", new Vector2(0.12f, 0.66f),
+            new Vector2(0.88f, 0.78f), 24, Color.white, TextAnchor.MiddleCenter);
+        trappedChoiceButtons = new Button[3];
+        float[] top = { 0.62f, 0.47f, 0.32f };
+        for (int i = 0; i < trappedChoiceButtons.Length; i++)
+        {
+            int choiceIndex = i;
+            trappedChoiceButtons[i] = AddButton(panel, "Enkaz Seçeneği " + (i + 1), "",
+                new Vector2(0.16f, top[i] - 0.11f), new Vector2(0.84f, top[i]), true,
+                () => owner.Scenario?.SelectTrappedAnswer(choiceIndex));
+        }
+        trappedFeedback = AddText(panel, "Enkaz Geri Bildirimi", "", new Vector2(0.12f, 0.11f),
+            new Vector2(0.88f, 0.19f), 18, new Color32(174, 230, 218, 255), TextAnchor.MiddleCenter);
+        trappedOverlay.SetActive(false);
     }
 
 
@@ -372,7 +403,7 @@ public sealed class PrototypeUI : MonoBehaviour
     public void ShowResults(int score, string review)
     {
         resultTitle.text = "Tatbikat tamamlandı";
-        resultScore.text = "PUAN   " + score;
+        resultScore.text = "PUAN   " + score + " / 700";
         resultReview.text = review;
         SetPages(resultPage);
         owner.SetPlayerControls(false);
@@ -403,10 +434,12 @@ public sealed class PrototypeUI : MonoBehaviour
             fullTasks = "ÇÖK-KAPAN-TUTUN\n" + crouch + "\n" + hold + progress
                 + "\n\nÖnce ışıklı halkaya geç, sonra çök ve sarsıntı boyunca masaya tutun.";
         }
+        else if (phase.StartsWith("ENKAZ ALTINDA"))
+            fullTasks = "Enkaz altında güvenli davranış adımlarını tamamla.";
         else
             fullTasks = shelter + "\n" + valve + "\n" + windows + "\n" + exit;
         taskText.text = fullTasks;
-        scoreText.text = "PUAN   " + score;
+        scoreText.text = "PUAN   " + score + " / 700";
         quakeStartHint.text = canStart ? "ENTER   •   SARSINTI TATBİKATINI BAŞLAT" : string.Empty;
     }
 
@@ -473,6 +506,39 @@ public sealed class PrototypeUI : MonoBehaviour
     {
         if (noticeText != null)
             noticeText.text = message;
+    }
+
+    public void ShowBlackout()
+    {
+        trappedOverlay.SetActive(true);
+        trappedOverlayImage.color = Color.black;
+        trappedTitle.text = string.Empty;
+        trappedQuestion.text = string.Empty;
+        trappedFeedback.text = string.Empty;
+        foreach (Button button in trappedChoiceButtons)
+            button.gameObject.SetActive(false);
+    }
+
+    public void ShowTrappedQuestion(int step, string question, string[] choices, string feedback)
+    {
+        trappedOverlay.SetActive(true);
+        trappedOverlayImage.color = Color.black;
+        trappedTitle.text = "ENKAZ ALTINDASIN  •  ADIM " + step + "/3";
+        trappedQuestion.text = question;
+        trappedFeedback.text = feedback;
+        for (int i = 0; i < trappedChoiceButtons.Length; i++)
+        {
+            Button button = trappedChoiceButtons[i];
+            button.gameObject.SetActive(true);
+            button.interactable = true;
+            button.GetComponentInChildren<Text>().text = (i + 1) + "   " + choices[i];
+        }
+    }
+
+    public void SetTrappedFeedback(string feedback)
+    {
+        if (trappedFeedback != null)
+            trappedFeedback.text = feedback;
     }
 
     private GameObject MakePage(string name, Color color)
