@@ -274,6 +274,7 @@ public sealed class PrototypePlayerController : MonoBehaviour
 
     public void BeginTableHold(Vector3 alignPosition, Vector3 safeTable)
     {
+        crouched = true;
         holdingTable = true;
         holdPosition = alignPosition;
         tablePosition = safeTable;
@@ -930,9 +931,7 @@ public sealed class PrototypePlayerController : MonoBehaviour
         {
             targetPosition = scenario.HoldZonePosition;
             targetName = "Sağlam masa";
-            action = scenario != null && scenario.HasTableProtectionAnimation
-                ? "Güvenli bölge • C ile çök • E veya sol tıkla tutun"
-                : "Güvenli bölge • C ile çök";
+            action = "Yeşil alanın içindeyken E veya sol tıkla tutun";
         }
         else
         {
