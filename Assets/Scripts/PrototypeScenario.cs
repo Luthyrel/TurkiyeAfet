@@ -73,7 +73,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         ? Mathf.Max(0f, preparationCountdownRemaining) : 0f;
     public int Score { get; private set; }
     public float HoldProgress => Mathf.Clamp01(holdTimer / RequiredHoldDuration);
-    public Vector3 HoldZonePosition => safeTablePosition + new Vector3(-0.45f, 0f, -0.75f);
+    public Vector3 HoldZonePosition => safeTablePosition + new Vector3(-0.35f, 0f, -0.15f);
     public bool CrouchConditionComplete => safeActionComplete
         || (player != null && player.IsCrouched && player.IsInSafeZone(HoldZonePosition, HoldZoneRadius));
     public bool TableHoldConditionComplete => safeActionComplete;
@@ -96,13 +96,7 @@ public sealed class PrototypeScenario : MonoBehaviour
                     ? "Masanın diğer tarafına geç. Yerdeki ışıklı halkaya gir."
                     : "Sağlam masanın önündeki ışıklı halkaya yaklaş.";
             }
-            if (!player.IsCrouched)
-                return "Güvenli bölgedesin. Önce C ile çök; sonra masaya dönüp E veya sol tıkla tutun.";
-            if (!player.IsFacing(safeTablePosition, 0.65f))
-                return "Çökme tamamlandı. Masaya dön; sonra E veya sol tıkla tutun.";
-            if (!player.HasTableProtectionAnimation)
-                return "Çökme tamamlandı. Bu karakter için doğrulanmış masa tutunma animasyonu yok.";
-            return "✓ Çökme tamamlandı. E veya sol tıkla masaya tutun ve sarsıntı boyunca kal.";
+            return "Yeşil alanın içindesin. E veya sol tıkla tutun; merkeze yerleşeceksin.";
         }
     }
 
@@ -316,12 +310,13 @@ public sealed class PrototypeScenario : MonoBehaviour
             new Vector3(-0.23f, 0.37f, 0.10f), new Vector3(0f, 0.37f, 0.10f), new Vector3(0.23f, 0.37f, 0.10f)
         };
         player.ReleaseBagItem(heldBagItem);
-        heldBagItem.PackBagItem(disasterBag.transform, bagSlots[baggedItemCount], 0.14f);
+        heldBagItem.PackBagItem(disasterBag.BagContentsRoot, bagSlots[baggedItemCount], 0.14f);
         heldBagItem = null;
         baggedItemCount++;
 
         if (baggedItemCount >= RequiredBagItemCount)
         {
+            target.SetBagOpenVisual(false);
             target.CompleteAction();
             Score += 75;
             bootstrap.ShowNotice("Çanta hazırlandı. +75 ek puan.");
@@ -432,7 +427,7 @@ public sealed class PrototypeScenario : MonoBehaviour
             body.AddTorque(Random.insideUnitSphere * 2.5f, ForceMode.Impulse);
         }
 
-        bootstrap.ShowNotice("Deprem başladı. Çıkışa koşma. Işıklı güvenli bölgeye geç ve C ile çök. Bu karakterde masa tutunma animasyonu olmadığından E adımı devre dışı.");
+        bootstrap.ShowNotice("Deprem başladı. Çıkışa koşma. Yeşil güvenli alanın içine girip E veya sol tıkla tutun; merkeze yerleşeceksin.");
         RefreshHud();
     }
 
@@ -443,36 +438,20 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         if (!player.IsInSafeZone(HoldZonePosition, HoldZoneRadius))
         {
-            Vector3 offset = player.transform.position - safeTablePosition;
+            Vector3 offset = player.transform.position - HoldZonePosition;
             offset.y = 0f;
             string message = offset.magnitude < 2.6f
-                ? "Masanın diğer tarafına geç. Yerdeki ışıklı halkanın içine gir."
-                : "Sağlam masanın önündeki ışıklı halkaya yaklaş.";
+                ? "Yeşil güvenli alanın içine gir, sonra E veya sol tıkla tutun."
+                : "Sağlam masanın önündeki yeşil güvenli alana yaklaş.";
             bootstrap.ShowNotice(message);
             return;
         }
 
-        if (!player.IsCrouched)
-        {
-            bootstrap.ShowNotice("Güvenli bölgedesin. Önce C ile çök; çökme ve tutunma ayrı adımlardır.");
-            return;
-        }
-
-        if (!player.IsFacing(safeTablePosition, 0.65f))
-        {
-            bootstrap.ShowNotice("Masaya dön. Üçüncü şahıs kamerayı masaya çevir, sonra E veya sol tıkla.");
-            return;
-        }
-
         holdTimer = 0f;
-        // Masa üstünün ön kenarını geçip altına girecek kadar hizala; çarpışma
-        // kapsülü bu durumda masa tablasının alt boşluğuna sığacak şekilde alçalır.
-        Vector3 underTablePosition = safeTablePosition + new Vector3(-0.35f, 0f, -0.15f);
-        player.BeginTableHold(underTablePosition, safeTablePosition);
-        bootstrap.ShowNotice("Çökme tamamlandı. Masaya tutunuyorsun; sarsıntı boyunca burada kal.");
+        player.BeginTableHold(HoldZonePosition, safeTablePosition);
+        bootstrap.ShowNotice("Güvenli alana geçtin ve masaya tutunuyorsun; sarsıntı boyunca burada kal.");
         RefreshHud();
     }
-
     public void CancelTableHold(string message)
     {
         if (player == null || !player.IsHoldingTable)
