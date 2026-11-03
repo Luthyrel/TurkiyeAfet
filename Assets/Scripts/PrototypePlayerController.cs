@@ -629,7 +629,7 @@ public sealed class PrototypePlayerController : MonoBehaviour
             float palmAdvanceRatio = 0f;
             if (string.Equals(heldBagItem.ActionName, "Acil durum radyosu", System.StringComparison.OrdinalIgnoreCase))
                 palmAdvanceRatio = 0.25f;
-            else if (string.Equals(heldBagItem.ActionName, "El feneri", System.StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(heldBagItem.ActionName, "Cep telefonu", System.StringComparison.OrdinalIgnoreCase))
                 palmAdvanceRatio = 0.10f;
             else if (string.Equals(heldBagItem.ActionName, "Düdük", System.StringComparison.OrdinalIgnoreCase))
                 palmAdvanceRatio = 0.16f;
@@ -671,7 +671,7 @@ public sealed class PrototypePlayerController : MonoBehaviour
 
     private float GetFirstPersonHeldItemSize(string actionName)
     {
-        if (string.Equals(actionName, "El feneri", System.StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(actionName, "Cep telefonu", System.StringComparison.OrdinalIgnoreCase))
             return 0.15f;
         if (string.Equals(actionName, "Su şişesi", System.StringComparison.OrdinalIgnoreCase))
             return 0.12f;
