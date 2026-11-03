@@ -40,6 +40,7 @@ public sealed class PrototypeInteractable : MonoBehaviour
     public Vector3 HeldGripFaceAxis => heldGripFaceAxis;
     public string TargetDisplayName => action == PrototypeAction.CollectBagItem ? actionName : gameObject.name;
     public bool IsComplete { get; private set; }
+    public Transform BagContentsRoot => openBagInterior != null ? openBagInterior.transform : transform;
 
     public void Configure(PrototypeAction newAction, string newActionName)
     {
