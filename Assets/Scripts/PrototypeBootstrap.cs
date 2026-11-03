@@ -340,24 +340,24 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         {
             CreateWaterBottle(blue, silver),
             CreateFirstAidPack(red, white),
-            CreateFlashlight(dark, yellow, silver),
+            CreateSmartphone(dark, radioMat, silver, yellow, white),
             CreateRadio(radioMat, yellow, silver),
             CreateFoodPack(foodMat, accent),
-            CreateWhistle(silver, yellow, dark)
+            CreateSpareBattery(yellow, silver, dark)
         };
-        string[] names = { "Su şişesi", "İlk yardım çantası", "El feneri", "Acil durum radyosu", "Uzun ömürlü gıda", "Düdük" };
+        string[] names = { "Su şişesi", "İlk yardım çantası", "Cep telefonu", "Acil durum radyosu", "Uzun ömürlü gıda", "Yedek pil" };
         // Kaynak eksenler model-local; hedef yönler avuç çerçevesindedir.
         // Su şişesi korunur; asimetrik eşyalar doğru yüz/top yönü için ayrı çevrilir.
-        Vector3[] gripAxes = { Vector3.up, Vector3.right, Vector3.right, Vector3.right, Vector3.right, Vector3.right };
+        Vector3[] gripAxes = { Vector3.up, Vector3.right, Vector3.up, Vector3.right, Vector3.right, Vector3.up };
         Vector3[] gripDirections = { Vector3.up, Vector3.down, Vector3.up, Vector3.down, Vector3.down, Vector3.up };
         Vector3[] gripFaceAxes = { Vector3.back, Vector3.back, Vector3.back, Vector3.back, Vector3.back, Vector3.back };
         // Sabit yerler: bazıları mobilya altı/arkası; hepsi zeminde ve erişilebilir.
         Vector3[] floorSpots =
         {
             new Vector3(-3.10f, 0f, 0.92f),  // Yemek masasının altında
-            new Vector3(0.35f, 0f, 0.92f),   // Sağlam masanın altında
-            new Vector3(5.08f, 0f, 0.35f),   // TV ünitesinin yanında
-            new Vector3(5.45f, 0f, 2.20f),   // Kitaplığın yan tarafında
+            new Vector3(3.8f, 0f, 2.6f),    // Masalardan uzakta, açık zeminde
+            new Vector3(6.05f, 0f, -3.65f),  // Gaz vanasının gerisinde
+            new Vector3(-4.05f, 0f, -3.70f), // Ayakkabılığın yanında
             new Vector3(2.20f, 0f, 5.84f),   // Koltuğun arkasında
             new Vector3(-5.52f, 0f, -3.48f)  // Ayakkabılığın ön yanında
         };
@@ -408,24 +408,32 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         return root;
     }
 
-    private GameObject CreateFlashlight(Material bodyMaterial, Material lensMaterial, Material metalMaterial)
+    private GameObject CreateSmartphone(Material bodyMaterial, Material screenMaterial, Material metalMaterial,
+        Material accentMaterial, Material lightMaterial)
     {
         GameObject root = CreateBagItemRoot();
-        CreateChildCylinder(root.transform, "El Feneri Gövdesi", new Vector3(0f, 0.08f, 0f),
-            new Vector3(0.065f, 0.14f, 0.065f), bodyMaterial, Quaternion.Euler(0f, 0f, 90f));
-        CreateChildCylinder(root.transform, "Geniş Fener Başlığı", new Vector3(0.15f, 0.08f, 0f),
-            new Vector3(0.10f, 0.055f, 0.10f), metalMaterial, Quaternion.Euler(0f, 0f, 90f));
-        // Mercek yüzü avuç kamerasına döner; gövdenin uzun ekseni parmak yönünde kalır.
-        CreateChildCylinder(root.transform, "Kameraya Bakan Fener Merceği", new Vector3(0.15f, 0.08f, -0.102f),
-            new Vector3(0.078f, 0.018f, 0.078f), lensMaterial, Quaternion.Euler(90f, 0f, 0f));
-        CreateChildBox(root.transform, "Fener Düğmesi", new Vector3(-0.04f, 0.148f, 0f),
-            new Vector3(0.055f, 0.025f, 0.045f), lensMaterial);
-        for (int i = 0; i < 3; i++)
-            CreateChildBox(root.transform, "Fener Kavrama Çizgisi", new Vector3(-0.08f + i * 0.055f, 0.08f, -0.068f),
-                new Vector3(0.018f, 0.08f, 0.012f), metalMaterial);
+        CreateChildBox(root.transform, "Telefon Gövdesi", new Vector3(0f, 0.16f, 0f),
+            new Vector3(0.18f, 0.31f, 0.035f), bodyMaterial);
+        CreateChildBox(root.transform, "Telefon Ekranı", new Vector3(0f, 0.17f, -0.020f),
+            new Vector3(0.15f, 0.235f, 0.008f), screenMaterial);
+        CreateChildBox(root.transform, "Ekran Durum Çubuğu", new Vector3(0f, 0.272f, -0.025f),
+            new Vector3(0.12f, 0.012f, 0.004f), bodyMaterial);
+        CreateChildBox(root.transform, "Telefon Arama Kartı", new Vector3(0f, 0.19f, -0.026f),
+            new Vector3(0.10f, 0.07f, 0.004f), accentMaterial);
+        CreateChildBox(root.transform, "Telefon Alt Menü", new Vector3(0f, 0.075f, -0.026f),
+            new Vector3(0.11f, 0.025f, 0.004f), bodyMaterial);
+        CreateChildBox(root.transform, "Telefon Hoparlör Izgarası", new Vector3(0f, 0.303f, -0.022f),
+            new Vector3(0.045f, 0.006f, 0.004f), metalMaterial);
+        CreateChildCylinder(root.transform, "Ön Kamera", new Vector3(0.042f, 0.303f, -0.024f),
+            new Vector3(0.008f, 0.003f, 0.008f), lightMaterial, Quaternion.Euler(90f, 0f, 0f));
+        CreateChildCylinder(root.transform, "Ana Ekran Düğmesi", new Vector3(0f, 0.015f, -0.021f),
+            new Vector3(0.012f, 0.003f, 0.012f), metalMaterial, Quaternion.Euler(90f, 0f, 0f));
+        CreateChildBox(root.transform, "Ses Düğmesi", new Vector3(-0.094f, 0.22f, 0f),
+            new Vector3(0.008f, 0.045f, 0.012f), metalMaterial);
+        CreateChildBox(root.transform, "Güç Düğmesi", new Vector3(0.094f, 0.22f, 0f),
+            new Vector3(0.008f, 0.035f, 0.012f), metalMaterial);
         return root;
     }
-
     private GameObject CreateRadio(Material bodyMaterial, Material detailMaterial, Material metalMaterial)
     {
         GameObject root = CreateBagItemRoot();
@@ -461,20 +469,27 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         return root;
     }
 
-    private GameObject CreateWhistle(Material bodyMaterial, Material detailMaterial, Material apertureMaterial)
+    private GameObject CreateSpareBattery(Material bodyMaterial, Material terminalMaterial, Material labelMaterial)
     {
         GameObject root = CreateBagItemRoot();
-        CreateChildCylinder(root.transform, "Düdük Gövdesi", new Vector3(0f, 0.045f, 0f),
-            new Vector3(0.038f, 0.12f, 0.038f), bodyMaterial, Quaternion.Euler(0f, 0f, 90f));
-        CreateChildCylinder(root.transform, "Düdük Ağızlığı", new Vector3(0.12f, 0.045f, 0f),
-            new Vector3(0.045f, 0.045f, 0.045f), detailMaterial, Quaternion.Euler(0f, 0f, 90f));
-        CreateChildBox(root.transform, "Kameraya Bakan Düdük Açıklığı", new Vector3(0.12f, 0.045f, -0.047f),
-            new Vector3(0.028f, 0.022f, 0.006f), apertureMaterial);
-        CreateChildCylinder(root.transform, "Düdük Halkası", new Vector3(-0.10f, 0.045f, 0f),
-            new Vector3(0.055f, 0.018f, 0.055f), detailMaterial, Quaternion.Euler(90f, 0f, 0f));
+        CreateChildBox(root.transform, "Yedek Pil Gövdesi", new Vector3(0f, 0.14f, 0f),
+            new Vector3(0.19f, 0.27f, 0.12f), bodyMaterial);
+        CreateChildBox(root.transform, "Pil Ön Etiketi", new Vector3(0f, 0.14f, -0.063f),
+            new Vector3(0.145f, 0.15f, 0.008f), labelMaterial);
+        CreateChildBox(root.transform, "Pil Artı İşareti Dikey", new Vector3(-0.035f, 0.16f, -0.069f),
+            new Vector3(0.012f, 0.05f, 0.006f), bodyMaterial);
+        CreateChildBox(root.transform, "Pil Artı İşareti Yatay", new Vector3(-0.035f, 0.16f, -0.070f),
+            new Vector3(0.05f, 0.012f, 0.006f), bodyMaterial);
+        CreateChildBox(root.transform, "Pil Eksi İşareti", new Vector3(0.037f, 0.16f, -0.069f),
+            new Vector3(0.045f, 0.012f, 0.006f), bodyMaterial);
+        CreateChildBox(root.transform, "Pil Alt Dikişi", new Vector3(0f, 0.035f, -0.062f),
+            new Vector3(0.15f, 0.012f, 0.008f), terminalMaterial);
+        CreateChildCylinder(root.transform, "Pozitif Pil Kutbu", new Vector3(-0.045f, 0.29f, 0f),
+            new Vector3(0.035f, 0.018f, 0.035f), terminalMaterial);
+        CreateChildCylinder(root.transform, "Negatif Pil Kutbu", new Vector3(0.045f, 0.285f, 0f),
+            new Vector3(0.035f, 0.012f, 0.035f), terminalMaterial);
         return root;
     }
-
     private GameObject CreateChildCylinder(Transform parent, string name, Vector3 localPosition,
         Vector3 localScale, Material material, Quaternion? localRotation = null)
     {
