@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -12,6 +13,13 @@ public sealed class ProvinceMapView : MonoBehaviour
     private Texture2D highlightTexture;
     private Color32[] maskPixels;
     private Color32[] highlightPixels;
+    private List<int>[] provincePixelIndices;
+    private Rect[] provinceBounds;
+    private bool[] completedCache;
+    private int displayedSelectedPlate = -1;
+    private int displayedHoveredPlate = -1;
+    private GameManager.DisasterType displayedDisaster;
+    private bool hasDisplayState;
     private int hoveredPlate;
     private int focusedPlate = 6;
     private bool pointerInside;
@@ -49,6 +57,7 @@ public sealed class ProvinceMapView : MonoBehaviour
         }
 
         maskPixels = maskTexture.GetPixels32();
+        BuildProvincePixelCache();
         highlightTexture = new Texture2D(maskTexture.width, maskTexture.height, TextureFormat.RGBA32, false, true)
         {
             name = "İl Haritası Vurgu Katmanı",
@@ -82,6 +91,12 @@ public sealed class ProvinceMapView : MonoBehaviour
             ? ProvinceManager.Instance != null ? ProvinceManager.Instance.GetFirstFloodProvincePlate() : 74
             : ProvinceManager.Instance != null ? ProvinceManager.Instance.GetLastProvincePlate() : 6;
         ProvinceSelected?.Invoke(0);
+        RefreshHighlight();
+    }
+
+    public void RefreshProgress()
+    {
+        hasDisplayState = false;
         RefreshHighlight();
     }
 
@@ -224,46 +239,124 @@ public sealed class ProvinceMapView : MonoBehaviour
         if (highlightTexture == null || maskPixels == null)
             return;
 
+        GameManager.DisasterType disaster = GameManager.Instance != null
+            ? GameManager.Instance.SelectedDisaster : GameManager.DisasterType.Earthquake;
+        bool rebuildBase = !hasDisplayState || displayedDisaster != disaster;
+        if (rebuildBase)
+        {
+            CacheCompletionState(disaster);
+            for (int index = 0; index < maskPixels.Length; index++)
+            {
+                int plate = maskPixels[index].r;
+                highlightPixels[index] = plate > 0 && completedCache[plate]
+                    ? new Color32(116, 126, 136, 190)
+                    : new Color32(0, 0, 0, 0);
+            }
+            displayedDisaster = disaster;
+            displayedSelectedPlate = -1;
+            displayedHoveredPlate = -1;
+            hasDisplayState = true;
+            highlightTexture.SetPixels32(highlightPixels);
+            highlightTexture.Apply(false, false);
+        }
+
+        HashSet<int> changedPlates = new HashSet<int>();
+        if (displayedSelectedPlate > 0) changedPlates.Add(displayedSelectedPlate);
+        if (displayedHoveredPlate > 0) changedPlates.Add(displayedHoveredPlate);
+        if (SelectedPlate > 0) changedPlates.Add(SelectedPlate);
+        if (hoveredPlate > 0) changedPlates.Add(hoveredPlate);
+
+        foreach (int plate in changedPlates)
+            RedrawProvince(plate);
+
+        if (changedPlates.Count > 0)
+            highlightTexture.Apply(false, false);
+
+        displayedSelectedPlate = SelectedPlate;
+        displayedHoveredPlate = hoveredPlate;
+    }
+
+    private void BuildProvincePixelCache()
+    {
+        provincePixelIndices = new List<int>[ProvinceCount + 1];
+        provinceBounds = new Rect[ProvinceCount + 1];
+        int[] minX = new int[ProvinceCount + 1];
+        int[] minY = new int[ProvinceCount + 1];
+        int[] maxX = new int[ProvinceCount + 1];
+        int[] maxY = new int[ProvinceCount + 1];
+        for (int plate = 1; plate <= ProvinceCount; plate++)
+        {
+            provincePixelIndices[plate] = new List<int>();
+            minX[plate] = maskTexture.width;
+            minY[plate] = maskTexture.height;
+            maxX[plate] = -1;
+            maxY[plate] = -1;
+        }
+
+        for (int index = 0; index < maskPixels.Length; index++)
+        {
+            int plate = maskPixels[index].r;
+            if (plate < 1 || plate > ProvinceCount) continue;
+            provincePixelIndices[plate].Add(index);
+            int x = index % maskTexture.width;
+            int y = index / maskTexture.width;
+            minX[plate] = Mathf.Min(minX[plate], x);
+            minY[plate] = Mathf.Min(minY[plate], y);
+            maxX[plate] = Mathf.Max(maxX[plate], x);
+            maxY[plate] = Mathf.Max(maxY[plate], y);
+        }
+
+        for (int plate = 1; plate <= ProvinceCount; plate++)
+            provinceBounds[plate] = maxX[plate] >= minX[plate]
+                ? Rect.MinMaxRect(minX[plate], minY[plate], maxX[plate] + 1, maxY[plate] + 1)
+                : new Rect();
+    }
+
+    private void CacheCompletionState(GameManager.DisasterType disaster)
+    {
+        completedCache = new bool[ProvinceCount + 1];
+        if (ProvinceManager.Instance == null) return;
+        for (int plate = 1; plate <= ProvinceCount; plate++)
+            completedCache[plate] = ProvinceManager.Instance.IsScenarioCompleted(plate, disaster);
+    }
+
+    private void RedrawProvince(int plate)
+    {
+        if (plate < 1 || plate > ProvinceCount || provincePixelIndices == null) return;
+        bool selected = plate == SelectedPlate;
+        bool hovered = plate == hoveredPlate;
+        Color32 normalFill = new Color32(0, 0, 0, 0);
+        Color32 completedFill = new Color32(116, 126, 136, 190);
         Color32 selectedFill = new Color32(51, 207, 177, 112);
         Color32 hoveredFill = new Color32(255, 196, 96, 118);
         Color32 selectedEdge = new Color32(171, 255, 231, 250);
         Color32 hoveredEdge = new Color32(255, 230, 168, 255);
 
-        for (int y = 0; y < maskTexture.height; y++)
-        for (int x = 0; x < maskTexture.width; x++)
+        List<int> indices = provincePixelIndices[plate];
+        if (indices.Count == 0) return;
+        for (int i = 0; i < indices.Count; i++)
         {
-            int index = y * maskTexture.width + x;
-            int plate = maskPixels[index].r;
-            bool selected = plate == SelectedPlate && SelectedPlate > 0;
-            bool hovered = plate == hoveredPlate && hoveredPlate > 0;
-            bool completed = plate > 0 && ProvinceManager.Instance != null
-                && GameManager.Instance != null
-                && ProvinceManager.Instance.IsScenarioCompleted(plate, GameManager.Instance.SelectedDisaster);
-            if (!selected && !hovered)
-            {
-                bool floodMode = GameManager.Instance != null
-                    && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
-                bool floodProvince = floodMode && plate > 0 && ProvinceManager.Instance != null
-                    && ProvinceManager.Instance.IsFloodProvince(plate);
-                highlightPixels[index] = completed
-                    ? new Color32(116, 126, 136, 190)
-                    : floodMode && plate > 0
-                        ? floodProvince ? new Color32(38, 155, 143, 78) : new Color32(55, 65, 76, 92)
-                        : new Color32(0, 0, 0, 0);
-                continue;
-            }
-
-            bool edge = x == 0 || y == 0 || x == maskTexture.width - 1 || y == maskTexture.height - 1
-                || ReadPlatePixel(x - 1, y) != plate || ReadPlatePixel(x + 1, y) != plate
+            int index = indices[i];
+            highlightPixels[index] = completedCache[plate] ? completedFill : normalFill;
+            if (!selected && !hovered) continue;
+            int x = index % maskTexture.width;
+            int y = index / maskTexture.width;
+            bool edge = ReadPlatePixel(x - 1, y) != plate || ReadPlatePixel(x + 1, y) != plate
                 || ReadPlatePixel(x, y - 1) != plate || ReadPlatePixel(x, y + 1) != plate;
             highlightPixels[index] = edge
                 ? (hovered ? hoveredEdge : selectedEdge)
-                : completed ? new Color32(116, 126, 136, 190)
-                : (hovered ? hoveredFill : selectedFill);
+                : completedCache[plate] ? completedFill : hovered ? hoveredFill : selectedFill;
         }
 
-        highlightTexture.SetPixels32(highlightPixels);
-        highlightTexture.Apply(false, false);
+        Rect bounds = provinceBounds[plate];
+        int xMin = (int)bounds.xMin;
+        int yMin = (int)bounds.yMin;
+        int width = (int)bounds.width;
+        int height = (int)bounds.height;
+        Color32[] patch = new Color32[width * height];
+        for (int y = 0; y < height; y++)
+            Array.Copy(highlightPixels, (yMin + y) * maskTexture.width + xMin, patch, y * width, width);
+        highlightTexture.SetPixels32(xMin, yMin, width, height, patch);
     }
 
     private void OnDestroy()
