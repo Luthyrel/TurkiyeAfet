@@ -221,4 +221,18 @@ public sealed class ProvinceManager : MonoBehaviour
         return disaster == GameManager.DisasterType.Earthquake
             && PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) == 1;
     }
+
+    public void ResetCompletionProgress()
+    {
+        for (int plate = 1; plate <= 81; plate++)
+        {
+            PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Deprem.Completed", plate));
+            PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Sel.Completed", plate));
+        }
+
+        // Clear the older hazard-wide completion flags too; keep scores and other preferences.
+        PlayerPrefs.DeleteKey("TurkiyeAfet.Deprem.Completed");
+        PlayerPrefs.DeleteKey("TurkiyeAfet.Sel.Completed");
+        PlayerPrefs.Save();
+    }
 }

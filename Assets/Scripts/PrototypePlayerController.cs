@@ -796,6 +796,9 @@ public sealed class PrototypePlayerController : MonoBehaviour
         {
             bool running = !crouched && (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed);
             float speed = crouched ? crouchSpeed : running ? runSpeed : walkSpeed;
+            bool wadingInFlood = scenario != null && scenario.IsPlayerInFloodWater;
+            if (wadingInFlood)
+                speed *= 0.38f;
             Vector3 horizontalVelocity = moveDirection * speed;
 
             if (moveDirection.sqrMagnitude > 0.01f)
@@ -875,9 +878,15 @@ public sealed class PrototypePlayerController : MonoBehaviour
             return;
 
         if (scenario.IsFloodScenario && (scenario.IsFlooding
-            || (scenario.CurrentPhase == PrototypeScenario.Phase.Aftershock && !scenario.IsFloodEvacuated)))
+            || (scenario.CurrentPhase == PrototypeScenario.Phase.Aftershock && !scenario.IsFloodEvacuated)
+            || scenario.IsPlayerInFloodWater))
         {
-            PrototypeBootstrap.Instance.SetPrompt("Su yükseliyor. Akıntıya girme; evin üst katındaki güvenli alana çık.");
+            string floodPrompt = scenario.IsPlayerInFloodWater
+                ? "Akıntı hareketini yavaşlatıyor. Suya girme; merdivenlerden üst kata çık."
+                : scenario.IsPlayerInFloodSafeZone
+                    ? "Güvenli alanda kal: " + scenario.FloodSafeZoneHoldRemaining.ToString("0.0") + " saniye daha."
+                    : "Su yükseliyor. Akıntıya girme; evin üst katındaki güvenli alana çık.";
+            PrototypeBootstrap.Instance.SetPrompt(floodPrompt);
             return;
         }
 

@@ -19,6 +19,7 @@ public sealed class PrototypeUI : MonoBehaviour
     private Text phaseText;
     private Text taskText;
     private Text scoreText;
+    private RectTransform hudPanelRect;
     private Text promptText;
     private Text noticeText;
     private Text resultTitle;
@@ -46,9 +47,8 @@ public sealed class PrototypeUI : MonoBehaviour
     private Button[] trappedChoiceButtons;
     private Button[] floodDialogueButtons;
     private Button provinceContinueButton;
-    private Button continueButton;
+    private Button resetProgressButton;
     private ProvinceMapView provinceMapView;
-    private bool hasSavedProgress;
 
     public void Initialize(PrototypeBootstrap bootstrap)
     {
@@ -73,8 +73,6 @@ public sealed class PrototypeUI : MonoBehaviour
             eventObject.transform.SetParent(transform, false);
         }
 
-        hasSavedProgress = ProvinceManager.Instance != null && GameManager.Instance != null
-            && ProvinceManager.Instance.HasAnyCompletedScenario(GameManager.Instance.SelectedDisaster);
         BuildMainPage();
         BuildProvincePage();
         BuildIntroPage();
@@ -160,8 +158,8 @@ public sealed class PrototypeUI : MonoBehaviour
 
         AddButton(card, "Yeni Oyun", "YENİ TATBİKAT", new Vector2(0.08f, 0.47f), new Vector2(0.92f, 0.61f), true,
             ShowProvincePage);
-        continueButton = AddButton(card, "Devam Et", hasSavedProgress ? "KAYITLI İLERLEME" : "KAYIT YOK",
-            new Vector2(0.08f, 0.30f), new Vector2(0.92f, 0.44f), false, ShowSavedProgress);
+        resetProgressButton = AddButton(card, "İlerlemeyi Sıfırla", "İLERLEMEYİ SIFIRLA",
+            new Vector2(0.08f, 0.30f), new Vector2(0.92f, 0.44f), false, ResetProgress);
         AddText(card, "Kontroller", "WASD hareket   •   Fare bakış   •   E / Sol tık etkileşim\nShift koş   •   C çök   •   Esc duraklat",
             new Vector2(0.08f, 0.08f), new Vector2(0.92f, 0.25f), 16, new Color32(175, 193, 208, 255), TextAnchor.MiddleLeft);
         AddText(mainPage.transform, "Alt Bilgi", "3D OYNANABİLİR PROTOTİP     •     TÜRKÇE     •     WINDOWS",
@@ -243,6 +241,7 @@ public sealed class PrototypeUI : MonoBehaviour
         hudPage = MakePage("Oyun Arayüzü", new Color(0f, 0f, 0f, 0f));
         RectTransform panel = MakeRect(hudPage.transform, "Görev Paneli", new Vector2(0f, 1f), new Vector2(0f, 1f),
             new Vector2(26f, -24f), new Vector2(430f, 300f), new Color(0f, 0f, 0f, 0f));
+        hudPanelRect = panel;
         AddImage(panel.gameObject, new Color32(10, 20, 32, 220));
         phaseText = AddText(panel, "Aşama", "HAZIRLIK", new Vector2(0.06f, 0.78f), new Vector2(0.94f, 0.95f),
             19, new Color32(94, 215, 196, 255), TextAnchor.MiddleLeft);
@@ -300,7 +299,7 @@ public sealed class PrototypeUI : MonoBehaviour
             int choice = i;
             floodDialogueButtons[i] = AddButton(card, "Diyalog Yanıtı " + (i + 1), "",
                 new Vector2(0.08f, buttonBottoms[i]), new Vector2(0.92f, buttonBottoms[i] + 0.12f),
-                i == 0, () => owner.Scenario?.SelectFloodDialogueChoice(choice));
+                false, () => owner.Scenario?.SelectFloodDialogueChoice(choice));
         }
         AddText(card, "Diyalog Kontrol İpucu", "Yanıtı fareyle seç veya 1 / 2 / 3 tuşuna bas",
             new Vector2(0.08f, 0.015f), new Vector2(0.92f, 0.075f), 14,
@@ -397,12 +396,16 @@ public sealed class PrototypeUI : MonoBehaviour
     public void ShowMainPage()
     {
         SetPages(mainPage);
-        hasSavedProgress = ProvinceManager.Instance != null && GameManager.Instance != null
-            && ProvinceManager.Instance.HasAnyCompletedScenario(GameManager.Instance.SelectedDisaster);
-        if (continueButton != null)
-            continueButton.GetComponentInChildren<Text>().text = hasSavedProgress ? "KAYITLI İLERLEME" : "KAYIT YOK";
         GameManager.Instance?.ReturnToMenu();
         owner.SetPlayerControls(false);
+    }
+
+    private void ResetProgress()
+    {
+        ProvinceManager.Instance?.ResetCompletionProgress();
+        provinceMapView?.RefreshProgress();
+        if (resetProgressButton != null)
+            resetProgressButton.GetComponentInChildren<Text>().text = "İLERLEMEYİ SIFIRLA";
     }
 
     private void ShowProvincePage()
@@ -513,29 +516,6 @@ public sealed class PrototypeUI : MonoBehaviour
         provinceContinueButton.interactable = false;
     }
 
-    private void ShowSavedProgress()
-    {
-        if (!hasSavedProgress)
-        {
-            ShowProvincePage();
-            return;
-        }
-
-        int plate = ProvinceManager.Instance != null ? ProvinceManager.Instance.GetLastCompletedProvincePlate() : 6;
-        ProvinceManager.Instance?.SelectProvince(plate);
-        bool flood = GameManager.Instance != null
-            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
-        string scorePrefix = "TurkiyeAfet." + (flood ? "Sel" : "Deprem");
-        string lastKey = ProvinceManager.ProgressKey(scorePrefix + ".LastScore", plate);
-        string bestKey = ProvinceManager.ProgressKey(scorePrefix + ".BestScore", plate);
-        int last = PlayerPrefs.GetInt(lastKey, plate == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.LastScore", 0) : 0);
-        int best = PlayerPrefs.GetInt(bestKey, plate == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.BestScore", last) : last);
-        ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.GetProvince(plate) : null;
-        ShowResults(last, "Son tamamlanan senaryo: " + (province != null ? province.name : "seçilen il") +
-            (flood ? " ilinde sel ve taşkından korunma." : " ilinde deprem hazırlığı ve güvenli tahliye.")
-            + " En yüksek puanın: " + best + ".\nİlerlemen bu bilgisayarda saklanıyor.");
-    }
-
     public void ShowHud()
     {
         SetPages(hudPage);
@@ -550,9 +530,9 @@ public sealed class PrototypeUI : MonoBehaviour
 
         owner.SetPlayerControls(false);
     }
-    public void ShowResults(int score, string review)
+    public void ShowResults(int score, string review, string title = "Tatbikat tamamlandı")
     {
-        resultTitle.text = "Tatbikat tamamlandı";
+        resultTitle.text = title;
         resultScore.text = "PUAN   " + score + " puan";
         resultReview.text = review;
         SetPages(resultPage);
@@ -591,10 +571,20 @@ public sealed class PrototypeUI : MonoBehaviour
         else
             fullTasks = shelter + "\n" + valve + "\n" + windows + "\n" + exit;
         taskText.text = fullTasks;
+        if (hudPanelRect != null)
+        {
+            // Long flood warnings/tasks must push the score row downward, not overlap it.
+            float requiredPanelHeight = (taskText.preferredHeight + 24f) / 0.55f;
+            hudPanelRect.sizeDelta = new Vector2(430f, Mathf.Clamp(requiredPanelHeight, 300f, 560f));
+        }
         scoreText.text = "PUAN   " + score;
-        quakeStartHint.text = preparationCountdown > 0.05f
-            ? "DEPREM " + Mathf.CeilToInt(preparationCountdown) + " SANİYE İÇİNDE BAŞLIYOR"
-            : string.Empty;
+        bool floodCountdown = owner != null && owner.Scenario != null && owner.Scenario.IsFloodScenario;
+        if (!floodCountdown && preparationCountdown > 0.05f)
+        {
+            quakeStartHint.text = "DEPREM " + Mathf.CeilToInt(preparationCountdown) + " SANİYE İÇİNDE BAŞLIYOR";
+        }
+        else
+            quakeStartHint.text = string.Empty;
     }
 
     public void UpdateTargetGuide(Camera camera, Vector3 targetPosition, bool unobstructed,

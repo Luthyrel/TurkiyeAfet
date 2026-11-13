@@ -19,6 +19,8 @@ public sealed class PrototypeScenario : MonoBehaviour
     private const float FloodRiseDuration = 18f;
     private const float FloodRecessionDelay = 8f;
     private const float FloodRecessionDuration = 8f;
+    private const float FloodSafeZoneHoldDuration = 2f;
+    private const float FloodDrowningDuration = 5f;
 
     private static readonly string[] TrappedQuestions =
     {
@@ -65,6 +67,7 @@ public sealed class PrototypeScenario : MonoBehaviour
     private float quakeTimer;
     private float holdTimer;
     private float preparationCountdownRemaining;
+    private int lastFloodCountdownDisplayed = -1;
     private int baggedItemCount;
     private bool disasterBagOpen;
     private bool bagTaskSkipped;
@@ -90,6 +93,10 @@ public sealed class PrototypeScenario : MonoBehaviour
     private PrototypeInteractable floodDialogueTarget;
     private bool floodAllClearAnnounced;
     private bool floodAllClearNoticeShown;
+    private bool floodWaterContactNotified;
+    private float floodSafeZoneHoldTimer;
+    private float floodDrowningTimer;
+    private bool floodDrowningStarted;
 
     public Phase CurrentPhase { get; private set; } = Phase.Preparation;
     public bool IsShaking => CurrentPhase == Phase.Shaking;
@@ -97,6 +104,14 @@ public sealed class PrototypeScenario : MonoBehaviour
     public bool IsFlooding => floodScenario && CurrentPhase == Phase.Flooding;
     public bool IsFloodEvacuated => floodEvacuated;
     public Vector3 FloodSafePosition => floodSafeCenter;
+    public bool IsPlayerInFloodSafeZone => player != null && IsInFloodSafeZone(player.transform.position);
+    public float FloodSafeZoneHoldRemaining => Mathf.Max(0f, FloodSafeZoneHoldDuration - floodSafeZoneHoldTimer);
+    public bool IsFloodDrowning => floodDrowningStarted;
+    public int FloodDrowningSecondsRemaining => Mathf.CeilToInt(Mathf.Max(0f, FloodDrowningDuration - floodDrowningTimer));
+    public bool IsPlayerInFloodWater => floodScenario
+        && (CurrentPhase == Phase.Flooding || CurrentPhase == Phase.Aftershock)
+        && floodWater != null && player != null
+        && player.transform.position.y < floodWater.position.y + floodWater.localScale.y * 0.5f - 0.3f;
     public bool IsTrapped => CurrentPhase == Phase.Trapped;
     public int TrappedQuestionCount => TrappedQuestions.Length;
     public bool IsPostQuake => CurrentPhase == Phase.Aftershock;
@@ -359,12 +374,7 @@ public sealed class PrototypeScenario : MonoBehaviour
     private void TryInteractFlood(PrototypeInteractable target)
     {
         if (target == null)
-        {
-            bootstrap.ShowNotice(CurrentPhase == Phase.Flooding
-                ? "Su yükseliyor. Evden çıkmaya çalışma; üst kata, güvenli alana çık."
-                : "Aktif sel görevi hedefini bul ve E veya sol tıkla etkileş.");
             return;
-        }
 
         PrototypeInteractable expected = CurrentPreparationTarget;
         if (target != expected)
@@ -449,9 +459,9 @@ public sealed class PrototypeScenario : MonoBehaviour
                 "İl: " + provinceName + ". Açık adresinizi mahalle, sokak ve bina numarasıyla tarif edin.",
                 new[]
                 {
-                    "Sel nedeniyle üst katta mahsur kaldığımı ve açık adresimi bildiriyorum.",
-                    "Adres vermeden telefonu kapatıyorum.",
-                    "Adres aramak için su basan sokağa çıkıyorum."
+                    "Mahalle ve sokak adını paylaşıyorum. Bina numarasını netleştirince ayrıca iletsem olur mu?",
+                    "Sel nedeniyle üst katta mahsur kaldım. Açık adresimi ve binaya en kolay ulaşılacak yeri şimdi aktarıyorum.",
+                    "Önce içeridekilerin durumunu anlatıp adresi görüşmenin sonunda vereyim."
                 }, feedback);
         }
         else if (floodDialogueStep == 1)
@@ -460,20 +470,20 @@ public sealed class PrototypeScenario : MonoBehaviour
                 "Operatör: Binada kaç kişi var? Yaralı, çocuk, yaşlı veya özel yardıma ihtiyacı olan biri var mı?",
                 new[]
                 {
-                    "Kişi sayısını ve varsa yaralıları/özel ihtiyaçları net biçimde bildiriyorum.",
-                    "Bu bilgileri vermeden yalnızca yardım istiyorum.",
-                    "Kontrol etmek için alt kata ve suya iniyorum."
+                    "İçerideki kişi sayısını veriyorum; yaralanma durumundan emin olmadığım için bunu ekipler geldiğinde netleştirelim.",
+                    "Yardım ihtiyacı olanları belirtiyorum. Diğer kişilerin sayısını gerekirse ekipler geldiğinde tamamlayabilirim.",
+                    "Toplam kişi sayısını; bildiğim yaralanmaları ve özel yardıma ihtiyacı olanları ayrı ayrı aktarıyorum."
                 }, feedback);
         }
         else
         {
             bootstrap.ShowFloodDialogue("112 ACİL ÇAĞRI MERKEZİ",
-                "Operatör: Üst katta ve güvenli bir yerde kalın. Su basmış yola ya da akıntıya girmeyin; ekiplerin yönlendirmesini bekleyin.",
+                "Operatör: Üst katta ve güvenli bir yerde kalın. Su basmış yola ya da akıntıya girmeyin; ekiplerin yönlendirmesini bekleyin ve görevli görüşmeyi bitirene kadar hattı kapatmayın.",
                 new[]
                 {
-                    "Anladım. Üst katta kalıp suya girmeyeceğim; talimatları bekliyorum.",
-                    "Eşyaları almak için aşağı iniyorum.",
-                    "Yardım gelmeden binadan çıkmayı deniyorum."
+                    "Üst katta kalacağım. Hattı açık tutup ekiplerin yönlendirmesini bekliyorum.",
+                    "Üst katta kalırım; su biraz daha çekilince kuru görünen güzergâhtan çıkmayı değerlendiririm.",
+                    "Konumumu ilettim. Telefonumun şarjı az, bu yüzden şimdi kapatıp ihtiyaç olursa tekrar ararım."
                 }, feedback);
         }
     }
@@ -490,8 +500,8 @@ public sealed class PrototypeScenario : MonoBehaviour
             provinceName + " için su seviyesinin düştüğü bildiriliyor. Bu duyuru bölgedeki yolların ve binaların güvenli olduğu anlamına gelmez. Dere yatağına, su basmış yola ve hasarlı binaya yaklaşmayın; yetkililerin tahliye ve dönüş talimatlarını bekleyin.",
             new[]
             {
-                "Duyuruyu aldım. Güvenli alanda kalıp yetkililerin yönlendirmesini bekleyeceğim.",
-                "Suyu kontrol etmek için aşağıya ve sokağa ineceğim."
+                "Su seviyesi düşmüşse çıkışı gözle kontrol eder, kuru görünüyorsa kontrollü biçimde aşağı inerim.",
+                "Anladım. Güvenli alanda kalıp yetkililerin bölgeye dönüş talimatını bekleyeceğim."
             }, string.Empty);
     }
 
@@ -500,7 +510,10 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (floodDialogueMode == FloodDialogueMode.None || floodDialogueTarget == null)
             return;
 
-        int correctChoice = 0;
+        int correctChoice = floodDialogueMode == FloodDialogueMode.OfficialBulletin
+            ? 1
+            : floodDialogueStep == 0 ? 1
+            : floodDialogueStep == 1 ? 2 : 0;
         int optionCount = floodDialogueMode == FloodDialogueMode.OfficialBulletin ? 2 : 3;
         if (choiceIndex < 0 || choiceIndex >= optionCount)
             return;
@@ -518,8 +531,8 @@ public sealed class PrototypeScenario : MonoBehaviour
                     "Su seviyesi düştü; ancak dere yatağına, su basmış yola veya hasarlı binaya yaklaşmayın. Yetkililerin talimatlarını bekleyin.",
                     new[]
                     {
-                        "Duyuruyu aldım. Güvenli alanda kalıp yetkililerin yönlendirmesini bekleyeceğim.",
-                        "Suyu kontrol etmek için aşağıya ve sokağa ineceğim."
+                        "Su seviyesi düşmüşse çıkışı gözle kontrol eder, kuru görünüyorsa kontrollü biçimde aşağı inerim.",
+                        "Anladım. Güvenli alanda kalıp yetkililerin bölgeye dönüş talimatını bekleyeceğim."
                     }, feedback);
             return;
         }
@@ -662,6 +675,7 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         preparationCountdownStarted = true;
         preparationCountdownRemaining = PreparationCountdownDuration;
+        lastFloodCountdownDisplayed = floodScenario ? Mathf.CeilToInt(preparationCountdownRemaining) : -1;
         bootstrap.ShowNotice(floodScenario
             ? "Hazırlık tamamlandı. Taşkın suyu yaklaşık 5 saniye içinde yükselmeye başlayacak."
             : "Hazırlık tamamlandı. Deprem yaklaşık 5 saniye içinde başlayacak.");
@@ -742,6 +756,10 @@ public sealed class PrototypeScenario : MonoBehaviour
         preparationCountdownStarted = false;
         preparationCountdownRemaining = 0f;
         floodTimer = 0f;
+        floodWaterContactNotified = false;
+        floodSafeZoneHoldTimer = 0f;
+        floodDrowningTimer = 0f;
+        floodDrowningStarted = false;
         if (floodWater != null)
             floodWater.gameObject.SetActive(true);
         GameManager.Instance?.StartScenario();
@@ -825,6 +843,16 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (CurrentPhase == Phase.Preparation && preparationCountdownStarted)
         {
             preparationCountdownRemaining = Mathf.Max(0f, preparationCountdownRemaining - Time.deltaTime);
+            if (floodScenario)
+            {
+                int displayedCountdown = Mathf.CeilToInt(preparationCountdownRemaining);
+                if (displayedCountdown > 0 && displayedCountdown != lastFloodCountdownDisplayed)
+                {
+                    lastFloodCountdownDisplayed = displayedCountdown;
+                    bootstrap.ShowNotice("Hazırlık tamamlandı. Taşkın suyu yaklaşık " + displayedCountdown
+                        + " saniye içinde yükselmeye başlayacak.");
+                }
+            }
             if (preparationCountdownRemaining <= 0f)
             {
                 StartEarthquake();
@@ -910,6 +938,14 @@ public sealed class PrototypeScenario : MonoBehaviour
             floodWater.position = position;
         }
 
+        if (IsPlayerInFloodWater && !floodWaterContactNotified)
+        {
+            floodWaterContactNotified = true;
+            Score = Mathf.Max(0, Score - 25);
+            bootstrap.ShowNotice("Taşkın suyuna girdin. Akıntı hareketini yavaşlatıyor. Suya karşı yüzmeye çalışma; merdivenlerden üst kata çık. -25 puan.");
+            RefreshHud();
+        }
+
         if (!floodAllClearAnnounced
             && floodTimer >= FloodRiseDuration + FloodRecessionDelay + FloodRecessionDuration)
         {
@@ -921,14 +957,46 @@ public sealed class PrototypeScenario : MonoBehaviour
             }
         }
 
-        if (!floodEvacuated && player != null && IsInFloodSafeZone(player.transform.position))
+        bool playerInSafeZone = IsPlayerInFloodSafeZone;
+        if (!floodEvacuated && playerInSafeZone)
         {
-            floodEvacuated = true;
-            Score += 100;
-            if (CurrentPhase == Phase.Flooding)
-                CurrentPhase = Phase.Aftershock;
-            bootstrap.ShowNotice("Yüksek ve güvenli alana çıktın. Su çekilene kadar burada kal. +100 puan.");
-            RefreshHud();
+            floodSafeZoneHoldTimer += Time.deltaTime;
+            if (floodSafeZoneHoldTimer >= FloodSafeZoneHoldDuration)
+            {
+                floodEvacuated = true;
+                Score += 100;
+                if (CurrentPhase == Phase.Flooding)
+                    CurrentPhase = Phase.Aftershock;
+                bootstrap.ShowNotice("Yüksek ve güvenli alanda 2 saniye kaldın. Su çekilene kadar burada kal. +100 puan.");
+                RefreshHud();
+            }
+        }
+        else if (!playerInSafeZone)
+            floodSafeZoneHoldTimer = 0f;
+
+        // Use the character's body position, not the camera: the view can remain above
+        // the rendered water plane while the player is still standing in the flooded room.
+        if (floodTimer >= FloodRiseDuration && IsPlayerInFloodWater)
+        {
+            if (!floodDrowningStarted)
+            {
+                floodDrowningStarted = true;
+                floodDrowningTimer = 0f;
+                bootstrap.ShowNotice("Su en yüksek seviyede! Hâlâ suyun içindesin. 5 saniye içinde güvenli alana çık.");
+                RefreshHud();
+            }
+
+            floodDrowningTimer += Time.deltaTime;
+            if (floodDrowningTimer >= FloodDrowningDuration)
+            {
+                FailFloodScenario();
+                return;
+            }
+        }
+        else
+        {
+            floodDrowningStarted = false;
+            floodDrowningTimer = 0f;
         }
 
         if (CurrentPhase == Phase.Flooding && floodTimer >= FloodRiseDuration)
@@ -949,6 +1017,22 @@ public sealed class PrototypeScenario : MonoBehaviour
         return position.y >= floodSafeCenter.y - 0.2f
             && Mathf.Abs(offset.x) <= 1.15f
             && Mathf.Abs(offset.z) <= 1.15f;
+    }
+
+    private void FailFloodScenario()
+    {
+        if (CurrentPhase == Phase.Completed)
+            return;
+
+        CurrentPhase = Phase.Completed;
+        string provinceName = ProvinceManager.Instance != null
+            && ProvinceManager.Instance.SelectedProvince != null
+            ? ProvinceManager.Instance.SelectedProvince.name
+            : "Seçili il";
+        GameManager.Instance?.ShowResults();
+        bootstrap.ShowResults(Score,
+            provinceName + " taşkın tatbikatı başarısız oldu. Su en yüksek seviyedeyken güvenli alana çıkılamadığı için boğulma yaşandı. İli tamamlamak için tatbikatı yeniden dene.",
+            "TAŞKINDA BOĞULDUN");
     }
     private void EndEarthquake()
     {
@@ -1103,16 +1187,26 @@ public sealed class PrototypeScenario : MonoBehaviour
                 AppendFloodTasks(ref floodTasks, floodPreparationTasks, floodPreparationIndex);
             }
             else if (CurrentPhase == Phase.Flooding)
+            {
                 floodTasks = "SEL ANI\n▶ AKTİF HEDEF: Yeşil çizginin bittiği, odanın içindeki merdivenin ilk basamağına git.\nDuvar dibinden değil odadan başlayıp üst kata çık; yeşil alanda dur.";
+                if (!floodEvacuated && floodSafeZoneHoldTimer > 0f)
+                    floodTasks += "\nGüvenli alanda kal: " + FloodSafeZoneHoldRemaining.ToString("0.0") + " sn";
+            }
             else if (CurrentPhase == Phase.Aftershock)
             {
                 floodTasks = floodEvacuated ? "SEL SONRASI\n" : "SEL SONRASI  •  ÖNCE GÜVENLİ ALANA ÇIK\n";
                 if (!floodEvacuated)
                     floodTasks += "Yeşil çizginin gösterdiği açık merdivenden üst kata çık; yeşil alana geç.\n";
+                if (!floodEvacuated && floodSafeZoneHoldTimer > 0f)
+                    floodTasks += "Güvenli alanda kal: " + FloodSafeZoneHoldRemaining.ToString("0.0") + " sn\n";
+                if (floodDrowningStarted)
+                    floodTasks += "BOĞULMA TEHLİKESİ: " + FloodDrowningSecondsRemaining + " sn içinde suyun üstüne çık!\n";
                 AppendFloodTasks(ref floodTasks, floodAfterTasks, floodAfterIndex);
             }
 
-            string phase = CurrentPhase switch
+            string phase = floodDrowningStarted
+                ? "SEL ANI  •  BOĞULMA TEHLİKESİ  •  " + FloodDrowningSecondsRemaining + " sn"
+                : CurrentPhase switch
             {
                 Phase.Preparation => "SEL / TAŞKIN ÖNCESİ HAZIRLIK",
                 Phase.Flooding => "SEL ANI  •  SU YÜKSELİYOR",

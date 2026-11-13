@@ -23,8 +23,6 @@ public sealed class PrototypeAudio : MonoBehaviour
     private AudioClip answerCorrect;
     private AudioClip answerWrong;
     private AudioClip taskComplete;
-    private AudioClip phoneRing;
-    private AudioClip phoneConnect;
     private AudioClip floodCallRing;
     private AudioClip floodCallConnect;
 
@@ -93,7 +91,7 @@ public sealed class PrototypeAudio : MonoBehaviour
             float pulse = time % 0.58f;
             if (pulse < 0.22f)
             {
-                float edge = Mathf.Min(pulse / 0.018f, (0.22f - pulse) / 0.025f, 1f);
+                float edge = Mathf.Min(pulse / 0.018f, Mathf.Min((0.22f - pulse) / 0.025f, 1f));
                 float tone = Mathf.Sin(2f * Mathf.PI * 440f * time) * 0.55f
                     + Mathf.Sin(2f * Mathf.PI * 480f * time) * 0.45f;
                 samples[i] = tone * Mathf.Clamp01(edge) * 0.24f;
@@ -113,7 +111,7 @@ public sealed class PrototypeAudio : MonoBehaviour
         for (int i = 0; i < sampleCount; i++)
         {
             float time = i / (float)sampleRate;
-            float edge = Mathf.Min(time / 0.018f, (duration - time) / 0.04f, 1f);
+            float edge = Mathf.Min(time / 0.018f, Mathf.Min((duration - time) / 0.04f, 1f));
             samples[i] = Mathf.Sin(2f * Mathf.PI * 425f * time) * Mathf.Clamp01(edge) * 0.18f;
         }
         AudioClip clip = AudioClip.Create("Simüle Telefon Bağlantı Sesi", sampleCount, 1, sampleRate, false);
@@ -140,7 +138,7 @@ public sealed class PrototypeAudio : MonoBehaviour
     public static void PlayGasValve() => Instance?.PlayOneShot(Instance.gasValve, 0.62f);
     public static void PlayWindowSlide() => Instance?.PlayOneShot(Instance.windowSlide, 0.5f);
     public static void PlayTaskComplete() => Instance?.PlayOneShot(Instance.taskComplete, 0.30f);
-    public static void PlayAnswerCorrect() => Instance?.PlayOneShot(Instance.answerCorrect, 0.62f);
+    public static void PlayAnswerCorrect() => Instance?.PlayOneShot(Instance.answerCorrect, 0.24f);
     public static void PlayAnswerWrong() => Instance?.PlayOneShot(Instance.answerWrong, 0.55f);
     public static void PlayPhoneRing() => Instance?.PlayOneShot(Instance.floodCallRing, 0.65f, 1f, 1f);
     public static void PlayPhoneConnect() => Instance?.PlayOneShot(Instance.floodCallConnect, 0.45f, 1f, 1f);

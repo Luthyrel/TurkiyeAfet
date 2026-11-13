@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 public enum PrototypeAction
@@ -12,7 +13,7 @@ public enum PrototypeAction
     OpenExitDoor,
     CutFloodPower,
     RaiseFloodValuables,
-    PlaceFloodBarrier,
+    RaiseFloodElectronics,
     CallForFloodHelp,
     WaitForFloodAllClear
 }
@@ -42,6 +43,7 @@ public sealed class PrototypeInteractable : MonoBehaviour
     private Vector3 heldGripFaceAxis = Vector3.back;
     private Vector3 floodPhoneRestPosition;
     private Quaternion floodPhoneRestRotation;
+    private Coroutine floodPhoneMotion;
 
     public PrototypeAction Action => action;
     public string ActionName => actionName;
@@ -103,12 +105,34 @@ public sealed class PrototypeInteractable : MonoBehaviour
         if (floodPhoneHandset == null)
             return;
 
-        floodPhoneHandset.localPosition = raised
-            ? floodPhoneRestPosition + new Vector3(0f, 0.13f, 0.04f)
+        if (floodPhoneMotion != null)
+            StopCoroutine(floodPhoneMotion);
+        floodPhoneMotion = StartCoroutine(AnimateFloodPhoneHandset(raised));
+    }
+
+    private IEnumerator AnimateFloodPhoneHandset(bool raised)
+    {
+        Vector3 startPosition = floodPhoneHandset.localPosition;
+        Quaternion startRotation = floodPhoneHandset.localRotation;
+        Vector3 targetPosition = raised
+            ? floodPhoneRestPosition + new Vector3(0f, 0.18f, 0.04f)
             : floodPhoneRestPosition;
-        floodPhoneHandset.localRotation = raised
-            ? floodPhoneRestRotation * Quaternion.Euler(0f, 0f, -22f)
+        Quaternion targetRotation = raised
+            ? floodPhoneRestRotation * Quaternion.Euler(0f, 0f, -26f)
             : floodPhoneRestRotation;
+        const float duration = 0.24f;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+            floodPhoneHandset.localPosition = Vector3.Lerp(startPosition, targetPosition, t);
+            floodPhoneHandset.localRotation = Quaternion.Slerp(startRotation, targetRotation, t);
+            yield return null;
+        }
+        floodPhoneHandset.localPosition = targetPosition;
+        floodPhoneHandset.localRotation = targetRotation;
+        floodPhoneMotion = null;
     }
 
     public void OpenExitDoor()
@@ -281,7 +305,7 @@ public sealed class PrototypeInteractable : MonoBehaviour
         CacheRenderers();
         bool floodAction = action == PrototypeAction.CutFloodPower
             || action == PrototypeAction.RaiseFloodValuables
-            || action == PrototypeAction.PlaceFloodBarrier
+            || action == PrototypeAction.RaiseFloodElectronics
             || action == PrototypeAction.CallForFloodHelp
             || action == PrototypeAction.WaitForFloodAllClear;
         if (action != PrototypeAction.OpenExitDoor && action != PrototypeAction.PrepareDisasterBag && !floodAction)
