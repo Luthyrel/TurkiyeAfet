@@ -492,6 +492,8 @@ public sealed class PrototypeUI : MonoBehaviour
         string fullTasks;
         if (phase.StartsWith("DEPREM ÖNCESİ"))
             fullTasks = tasks;
+        else if (phase.StartsWith("SEL"))
+            fullTasks = tasks;
         else if (phase.StartsWith("DEPREM ANI"))
         {
             PrototypeScenario scenario = owner != null ? owner.Scenario : null;

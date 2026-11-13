@@ -263,9 +263,14 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         for (int i = 0; i < steps; i++)
         {
             float top = 0.30f * (i + 1);
-            float z = -5.25f + i * 0.43f;
+            // The low first step faces the room; the climb rises toward the back landing.
+            float z = -1.81f - i * 0.43f;
             CreateBox("Üst Kata Çıkış Basamağı " + (i + 1), new Vector3(-4.25f, top - 0.09f, z),
                 new Vector3(1.7f, 0.18f, 0.62f), tread);
+            GameObject stepMarker = CreateBox("Basamak Fosforlu Yeşil Ön Şeridi " + (i + 1), new Vector3(-4.25f, top + 0.012f, z + 0.23f),
+                new Vector3(1.52f, 0.035f, 0.055f), safeMat);
+            Collider stepMarkerCollider = stepMarker.GetComponent<Collider>();
+            if (stepMarkerCollider != null) stepMarkerCollider.enabled = false;
             CreateBox("Merdiven Basamak Önü " + (i + 1), new Vector3(-4.25f, top * 0.5f, z + 0.27f),
                 new Vector3(1.7f, top, 0.08f), wood);
         }
@@ -274,30 +279,15 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             float x = -4.25f + side * 1.02f;
             for (int i = 0; i < steps; i += 2)
             {
-                float z = -5.25f + i * 0.43f;
+                float z = -1.81f - i * 0.43f;
                 float top = 0.30f * (i + 1);
                 CreateBox("Merdiven Korkuluk Direği", new Vector3(x, top * 0.5f + 0.12f, z),
                     new Vector3(0.08f, top + 0.24f, 0.08f), wood);
             }
             GameObject handrail = CreateBox("Merdiven Tırabzanı", new Vector3(x, 1.38f, -3.35f),
                 new Vector3(0.09f, 0.09f, 4.5f), wood);
-            handrail.transform.rotation = Quaternion.Euler(-37f, 0f, 0f);
+            handrail.transform.rotation = Quaternion.Euler(37f, 0f, 0f);
         }
-
-        GameObject stairSign = CreateBox("Üst Kata Çıkış Levhası", new Vector3(-4.25f, 2.18f, -5.72f),
-            new Vector3(2.8f, 0.95f, 0.12f), safeMat);
-        Collider signCollider = stairSign.GetComponent<Collider>();
-        if (signCollider != null)
-            signCollider.enabled = false;
-        GameObject signTextObject = new GameObject("Üst Kat Yönlendirme Yazısı");
-        signTextObject.transform.position = new Vector3(-4.25f, 2.18f, -5.64f);
-        TextMesh signText = signTextObject.AddComponent<TextMesh>();
-        signText.text = "ÜST KAT  ↑";
-        signText.anchor = TextAnchor.MiddleCenter;
-        signText.alignment = TextAlignment.Center;
-        signText.fontSize = 54;
-        signText.characterSize = 0.045f;
-        signText.color = Color.white;
 
         GameObject routeObject = new GameObject("Merdivenlere Giden Yeşil Yön Çizgisi");
         LineRenderer route = routeObject.AddComponent<LineRenderer>();
@@ -308,12 +298,14 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         route.material = safeMat;
         route.numCapVertices = 4;
         route.SetPosition(0, new Vector3(-8.3f, 0.09f, -2.5f));
-        route.SetPosition(1, new Vector3(-6.1f, 0.09f, -3.9f));
-        route.SetPosition(2, new Vector3(-4.25f, 0.09f, -5.0f));
+        route.SetPosition(1, new Vector3(-6.1f, 0.09f, -2.05f));
+        route.SetPosition(2, new Vector3(-4.25f, 0.09f, -1.78f));
     }
 
     private void BuildFloodNeighborhood(Material concrete, Material roof, Material wall, Material wood)
     {
+        Material window = MakeMaterial("Sel Mahallesi Camı", new Color32(103, 155, 173, 255));
+        Material door = MakeMaterial("Sel Mahallesi Kapısı", new Color32(92, 62, 43, 255));
         for (int i = 0; i < 5; i++)
         {
             float x = -1f + i * 6.3f;
@@ -322,6 +314,19 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                 new Vector3(4.3f, height, 4.1f), i % 2 == 0 ? wall : concrete);
             CreateBox("Mahalle Çatısı " + (i + 1), new Vector3(x, height + 0.2f, -7.8f),
                 new Vector3(4.6f, 0.35f, 4.4f), roof);
+            CreateBox("Mahalle Evi Kapısı " + (i + 1), new Vector3(x, 0.93f, -5.68f),
+                new Vector3(0.9f, 1.82f, 0.12f), door);
+            CreateBox("Mahalle Evi Kapı Kolu " + (i + 1), new Vector3(x + 0.27f, 0.96f, -5.59f),
+                new Vector3(0.07f, 0.07f, 0.035f), MakeMaterial("Kapı Kolu Pirinç", new Color32(188, 151, 81, 255)));
+            for (int side = -1; side <= 1; side += 2)
+            {
+                CreateBox("Mahalle Evi Pencere Çerçevesi " + (i + 1), new Vector3(x + side * 1.25f, 2.05f, -5.65f),
+                    new Vector3(0.98f, 0.78f, 0.12f), wood);
+                CreateBox("Mahalle Evi Camı " + (i + 1), new Vector3(x + side * 1.25f, 2.05f, -5.57f),
+                    new Vector3(0.78f, 0.58f, 0.05f), window);
+                CreateBox("Mahalle Evi Pencere Dikey Bölmesi " + (i + 1), new Vector3(x + side * 1.25f, 2.05f, -5.52f),
+                    new Vector3(0.045f, 0.58f, 0.035f), wood);
+            }
         }
         for (int i = 0; i < 4; i++)
         {
@@ -335,27 +340,96 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             MakeMaterial("Araç Koyu Mavi", new Color32(49, 78, 93, 255)));
         CreateBox("Araç Üst Kabini", new Vector3(2f, 1.25f, 5f), new Vector3(1.8f, 0.72f, 1.42f),
             MakeMaterial("Araç Camı", new Color32(104, 136, 145, 255)));
+        Material tireMaterial = MakeMaterial("Araç Lastiği", new Color32(38, 43, 44, 255));
+        Material hubMaterial = MakeMaterial("Araç Jantı", new Color32(166, 171, 163, 255));
+        for (int xSide = -1; xSide <= 1; xSide += 2)
+        for (int zSide = -1; zSide <= 1; zSide += 2)
+        {
+            Vector3 wheelPosition = new Vector3(2f + xSide * 1.05f, 0.35f, 5f + zSide * 0.66f);
+            GameObject tire = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            tire.name = "Taşkın Mahallesi Araç Lastiği";
+            tire.transform.SetPositionAndRotation(wheelPosition, Quaternion.Euler(90f, 0f, 0f));
+            tire.transform.localScale = new Vector3(0.34f, 0.14f, 0.34f);
+            tire.GetComponent<Renderer>().sharedMaterial = tireMaterial;
+            GameObject hub = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            hub.name = "Taşkın Mahallesi Araç Jantı";
+            hub.transform.SetPositionAndRotation(wheelPosition + new Vector3(0f, 0f, zSide * 0.09f),
+                Quaternion.Euler(90f, 0f, 0f));
+            hub.transform.localScale = new Vector3(0.18f, 0.05f, 0.18f);
+            hub.GetComponent<Renderer>().sharedMaterial = hubMaterial;
+        }
         CreateBox("Taşkın Tahliye Yolu", new Vector3(-0.1f, 0.18f, 1.0f), new Vector3(0.8f, 0.24f, 10f),
             MakeMaterial("Yükseltilmiş Yaya Yolu", new Color32(147, 139, 114, 255)));
     }
 
     private void BuildFloodTasks(Material wood, Material sandbag, Material safeMat)
     {
-        GameObject breaker = CreateBox("Elektrik Ana Şalteri", new Vector3(-10.72f, 1.4f, -1.5f),
-            new Vector3(0.22f, 0.52f, 0.42f), MakeMaterial("Şalter Kutusu", new Color32(67, 78, 81, 255)));
+        GameObject breaker = new GameObject("Elektrik Ana Şalteri");
+        breaker.transform.position = new Vector3(-10.72f, 1.4f, -1.5f);
+        BoxCollider breakerCollider = breaker.AddComponent<BoxCollider>();
+        breakerCollider.size = new Vector3(0.38f, 0.62f, 0.5f);
+        CreateChildBox(breaker.transform, "Şalter Kutusu",
+            Vector3.zero, new Vector3(0.22f, 0.52f, 0.42f), MakeMaterial("Şalter Kutusu", new Color32(67, 78, 81, 255)));
+        GameObject breakerFace = CreateChildBox(breaker.transform, "Şalter Açık Renkli Ön Panel",
+            new Vector3(0.15f, 0f, 0f), new Vector3(0.06f, 0.39f, 0.31f), MakeMaterial("Şalter Ön Paneli", new Color32(194, 198, 184, 255)));
+        Collider breakerFaceCollider = breakerFace.GetComponent<Collider>();
+        if (breakerFaceCollider != null) breakerFaceCollider.enabled = false;
+        GameObject togglePivot = new GameObject("Şalter Kolu Menteşesi");
+        togglePivot.transform.SetParent(breaker.transform, false);
+        togglePivot.transform.localPosition = new Vector3(0.20f, -0.02f, 0f);
+        togglePivot.transform.localRotation = Quaternion.Euler(0f, 0f, -24f);
+        GameObject breakerToggle = CreateChildBox(togglePivot.transform, "Kırmızı Ana Şalter Kolu",
+            new Vector3(0f, 0.075f, 0f), new Vector3(0.10f, 0.18f, 0.09f),
+            MakeMaterial("Şalter Kolu Kırmızı", new Color32(181, 61, 49, 255)));
+        Collider breakerToggleCollider = breakerToggle.GetComponent<Collider>();
+        if (breakerToggleCollider != null) breakerToggleCollider.enabled = false;
+        GameObject breakerIndicator = CreateChildBox(breaker.transform, "Şalter Durum Işığı",
+            new Vector3(0.19f, -0.13f, 0f), new Vector3(0.045f, 0.065f, 0.10f),
+            MakeMaterial("Şalter Kapalı Durum Işığı", new Color32(170, 54, 43, 255)));
+        Collider breakerIndicatorCollider = breakerIndicator.GetComponent<Collider>();
+        if (breakerIndicatorCollider != null) breakerIndicatorCollider.enabled = false;
         PrototypeInteractable breakerTask = breaker.AddComponent<PrototypeInteractable>();
         breakerTask.Configure(PrototypeAction.CutFloodPower, "Su ulaşmadan elektriği ana şalterden kes");
+        breakerTask.ConfigureFloodSwitchVisual(togglePivot.transform, breakerIndicator.GetComponent<Renderer>());
         scenario.AddFloodPreparationTask(breakerTask);
 
         GameObject documents = CreateBox("Evrak ve İlaç Kutusu", new Vector3(-8.8f, 0.52f, -1.1f),
             new Vector3(0.8f, 0.48f, 0.64f), wood);
+        Material paper = MakeMaterial("Açık Renk Evrak", new Color32(229, 220, 190, 255));
+        Material medicalPack = MakeMaterial("İlaç Paketi Beyaz", new Color32(236, 236, 222, 255));
+        Material medicalMark = MakeMaterial("İlaç Paketi Kırmızı İşaret", new Color32(190, 58, 51, 255));
+        GameObject papers = CreateChildBox(documents.transform, "Görünen Evrak Dosyası",
+            new Vector3(-0.12f, 0.61f, 0.04f), new Vector3(0.46f, 0.08f, 0.62f), paper);
+        Collider papersCollider = papers.GetComponent<Collider>();
+        if (papersCollider != null) papersCollider.enabled = false;
+        GameObject medicine = CreateChildBox(documents.transform, "İlk Yardım İlaç Paketi",
+            new Vector3(0.20f, 0.62f, -0.20f), new Vector3(0.29f, 0.22f, 0.31f), medicalPack);
+        Collider medicineCollider = medicine.GetComponent<Collider>();
+        if (medicineCollider != null) medicineCollider.enabled = false;
+        GameObject crossVertical = CreateChildBox(medicine.transform, "İlaç Paketi Artı İşareti Dikey",
+            new Vector3(0f, 0.58f, 0f), new Vector3(0.16f, 0.06f, 0.38f), medicalMark);
+        Collider crossVerticalCollider = crossVertical.GetComponent<Collider>();
+        if (crossVerticalCollider != null) crossVerticalCollider.enabled = false;
+        GameObject crossHorizontal = CreateChildBox(medicine.transform, "İlaç Paketi Artı İşareti Yatay",
+            new Vector3(0f, 0.59f, 0f), new Vector3(0.42f, 0.06f, 0.14f), medicalMark);
+        Collider crossHorizontalCollider = crossHorizontal.GetComponent<Collider>();
+        if (crossHorizontalCollider != null) crossHorizontalCollider.enabled = false;
         PrototypeInteractable documentsTask = documents.AddComponent<PrototypeInteractable>();
         documentsTask.Configure(PrototypeAction.RaiseFloodValuables, "Önemli evrak ve ilaçları üst kata kaldır");
         documentsTask.ConfigureMove(documents.transform, new Vector3(-7f, 3.08f, -2.7f));
         scenario.AddFloodPreparationTask(documentsTask);
 
-        GameObject barrier = CreateBox("Kapı Önü Kum Torbaları", new Vector3(-7f, 0.28f, 1.45f),
-            new Vector3(1.8f, 0.56f, 0.55f), sandbag);
+        GameObject barrier = new GameObject("Kapı Önü Kum Torbası Bariyeri");
+        barrier.transform.position = new Vector3(-7f, 0.28f, 1.45f);
+        BoxCollider barrierCollider = barrier.AddComponent<BoxCollider>();
+        barrierCollider.size = new Vector3(1.9f, 0.56f, 0.65f);
+        Material individualSandbag = sandbag != null
+            ? sandbag : MakeMaterial("Kum Torbası Beji", new Color32(174, 151, 105, 255));
+        AddSandbag(barrier.transform, new Vector3(-0.62f, 0.14f, 0f), individualSandbag);
+        AddSandbag(barrier.transform, new Vector3(0f, 0.14f, 0f), individualSandbag);
+        AddSandbag(barrier.transform, new Vector3(0.62f, 0.14f, 0f), individualSandbag);
+        AddSandbag(barrier.transform, new Vector3(-0.31f, 0.40f, 0f), individualSandbag);
+        AddSandbag(barrier.transform, new Vector3(0.31f, 0.40f, 0f), individualSandbag);
         PrototypeInteractable barrierTask = barrier.AddComponent<PrototypeInteractable>();
         barrierTask.Configure(PrototypeAction.PlaceFloodBarrier, "Kapı önüne kum torbası bariyerini yerleştir");
         barrierTask.ConfigureMove(barrier.transform, new Vector3(-7f, 0.32f, 1.88f));
@@ -375,6 +449,20 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         PrototypeInteractable allClearTask = allClear.AddComponent<PrototypeInteractable>();
         allClearTask.Configure(PrototypeAction.WaitForFloodAllClear, "Resmî duyuruları izle; su çekilmeden geri dönme");
         scenario.AddFloodAfterTask(allClearTask);
+    }
+
+    private void AddSandbag(Transform parent, Vector3 localPosition, Material material)
+    {
+        GameObject bag = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        bag.name = "Tekil Kum Torbası";
+        bag.transform.SetParent(parent, false);
+        bag.transform.localPosition = localPosition;
+        bag.transform.localScale = new Vector3(0.26f, 0.32f, 0.26f);
+        bag.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        Renderer renderer = bag.GetComponent<Renderer>();
+        if (renderer != null) renderer.sharedMaterial = material;
+        Collider collider = bag.GetComponent<Collider>();
+        if (collider != null) collider.enabled = false;
     }
 
     private void BuildTable(Material topMat, Material legMat)

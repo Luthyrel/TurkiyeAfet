@@ -945,6 +945,14 @@ public sealed class PrototypePlayerController : MonoBehaviour
         if (scenario == null || PrototypeBootstrap.Instance == null || playerCamera == null)
             return;
 
+        // Flood objectives are already listed in the upper-left HUD. Avoid a floating black
+        // world-space target card obscuring the room and its stair/route cues.
+        if (scenario.IsFloodScenario)
+        {
+            PrototypeBootstrap.Instance.HideTargetGuide();
+            return;
+        }
+
         Vector3 targetPosition;
         string targetName;
         string action;

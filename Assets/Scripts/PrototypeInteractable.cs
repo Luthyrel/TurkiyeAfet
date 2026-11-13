@@ -27,6 +27,8 @@ public sealed class PrototypeInteractable : MonoBehaviour
     [SerializeField] private GameObject closedBagLid;
     [SerializeField] private GameObject openBagInterior;
     [SerializeField] private Transform exitDoorPanel;
+    [SerializeField] private Transform floodSwitchLever;
+    [SerializeField] private Renderer floodSwitchIndicator;
 
     private Renderer[] renderers;
     private Color[] originalColors;
@@ -75,6 +77,12 @@ public sealed class PrototypeInteractable : MonoBehaviour
     public void ConfigureExitDoor(Transform panel)
     {
         exitDoorPanel = panel;
+    }
+
+    public void ConfigureFloodSwitchVisual(Transform lever, Renderer indicator)
+    {
+        floodSwitchLever = lever;
+        floodSwitchIndicator = indicator;
     }
 
     public void OpenExitDoor()
@@ -230,8 +238,23 @@ public sealed class PrototypeInteractable : MonoBehaviour
         if (moveObjectOnComplete && objectToMove != null)
             objectToMove.position = completedPosition;
 
+        if (action == PrototypeAction.CutFloodPower && floodSwitchLever != null)
+            floodSwitchLever.localRotation = Quaternion.Euler(0f, 0f, 35f);
+
+        if (action == PrototypeAction.CutFloodPower && floodSwitchIndicator != null)
+        {
+            Material indicatorMaterial = floodSwitchIndicator.material;
+            SetMaterialColor(indicatorMaterial, new Color(0.18f, 0.82f, 0.43f));
+            if (indicatorMaterial.HasProperty("_EmissionColor"))
+            {
+                indicatorMaterial.EnableKeyword("_EMISSION");
+                indicatorMaterial.SetColor("_EmissionColor", new Color(0.12f, 0.9f, 0.36f) * 0.7f);
+            }
+        }
+
         CacheRenderers();
-        if (action != PrototypeAction.OpenExitDoor && action != PrototypeAction.PrepareDisasterBag)
+        if (action != PrototypeAction.OpenExitDoor && action != PrototypeAction.PrepareDisasterBag
+            && action != PrototypeAction.CutFloodPower)
         {
             for (int i = 0; i < renderers.Length; i++)
             {

@@ -578,7 +578,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (floodWater != null)
             floodWater.gameObject.SetActive(true);
         GameManager.Instance?.StartScenario();
-        bootstrap.ShowNotice("Taşkın başladı. Evin arka-sağ köşesindeki yeşil çizgiyi merdivene kadar izle; basamaklardan üst kata çıkıp yeşil güvenli alanda dur.");
+        bootstrap.ShowNotice("Taşkın başladı. Odadan uzağa, duvar dibine değil açık alana bakan ilk basamaktan başla. Yeşil çizgiyi takip edip merdivenlerden üst kata çık; yeşil güvenli alanda dur.");
         RefreshHud();
     }
 
@@ -918,12 +918,12 @@ public sealed class PrototypeScenario : MonoBehaviour
                 AppendFloodTasks(ref floodTasks, floodPreparationTasks, floodPreparationIndex);
             }
             else if (CurrentPhase == Phase.Flooding)
-                floodTasks = "SEL ANI\n▶ AKTİF HEDEF: Evin arka-sağ köşesindeki yeşil çizgiyi merdivene kadar izle.\nBasamaklardan üst kata çık ve yeşil güvenli alanda dur.";
+                floodTasks = "SEL ANI\n▶ AKTİF HEDEF: Yeşil çizginin bittiği, odanın içindeki merdivenin ilk basamağına git.\nDuvar dibinden değil odadan başlayıp üst kata çık; yeşil alanda dur.";
             else if (CurrentPhase == Phase.Aftershock)
             {
                 floodTasks = floodEvacuated ? "SEL SONRASI\n" : "SEL SONRASI  •  ÖNCE GÜVENLİ ALANA ÇIK\n";
                 if (!floodEvacuated)
-                    floodTasks += "Arka-sağdaki merdivenden çık; üst kattaki yeşil alana geç.\n";
+                    floodTasks += "Yeşil çizginin gösterdiği açık merdivenden üst kata çık; yeşil alana geç.\n";
                 AppendFloodTasks(ref floodTasks, floodAfterTasks, floodAfterIndex);
             }
 
