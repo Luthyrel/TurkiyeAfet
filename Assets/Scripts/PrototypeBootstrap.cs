@@ -1159,6 +1159,18 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             ui.HideFloodDialogue();
     }
 
+    public void ShowFloodDialogue(string title, string body, string[] options, string feedback)
+    {
+        if (ui != null)
+            ui.ShowFloodDialogue(title, body, options, feedback);
+    }
+
+    public void HideFloodDialogue()
+    {
+        if (ui != null)
+            ui.HideFloodDialogue();
+    }
+
     public void ShowBlackout()
     {
         if (ui != null)
