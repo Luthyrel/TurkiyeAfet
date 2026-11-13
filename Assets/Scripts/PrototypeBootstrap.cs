@@ -17,6 +17,9 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private bool gameStarted;
     private bool paused;
     private Vector3 safeTablePosition;
+    private GameManager.DisasterType worldDisasterType;
+    private Transform floodWater;
+    private Vector3 floodSafePosition;
 
     public PrototypeScenario Scenario => scenario;
 
@@ -33,6 +36,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             new GameObject("Oyun Yöneticisi").AddComponent<GameManager>();
         if (ProvinceManager.Instance == null)
             new GameObject("81 İl Verisi").AddComponent<ProvinceManager>();
+
+        new GameObject("Oyun Sesleri").AddComponent<PrototypeAudio>();
     }
 
     private void Start()
@@ -42,18 +47,41 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         Screen.sleepTimeout = SleepTimeout.NeverSleep;
         ConfigureLighting();
 
-        scenario = new GameObject("Deprem Senaryosu").AddComponent<PrototypeScenario>();
-        BuildWorld();
+        worldDisasterType = GameManager.Instance != null
+            ? GameManager.Instance.SelectedDisaster : GameManager.DisasterType.Earthquake;
+        if (ProvinceManager.Instance != null)
+        {
+            int savedPlate = ProvinceManager.Instance.GetLastProvincePlate();
+            if (worldDisasterType == GameManager.DisasterType.Flood
+                && !ProvinceManager.Instance.IsFloodProvince(savedPlate))
+                savedPlate = ProvinceManager.Instance.GetFirstFloodProvincePlate();
+            ProvinceManager.Instance.SelectProvince(savedPlate);
+        }
+
+        string scenarioName = worldDisasterType == GameManager.DisasterType.Flood
+            ? "Sel ve Taşkın Senaryosu" : "Deprem Senaryosu";
+        scenario = new GameObject(scenarioName).AddComponent<PrototypeScenario>();
+        if (worldDisasterType == GameManager.DisasterType.Flood)
+            BuildFloodWorld();
+        else
+            BuildWorld();
 
         GameObject playerObject = new GameObject("Oyuncu", typeof(CharacterController));
         player = playerObject.AddComponent<PrototypePlayerController>();
-        player.Initialize(scenario, new Vector3(-0.4f, 0f, -2.3f), 255f);
+        Vector3 playerSpawn = worldDisasterType == GameManager.DisasterType.Flood
+            ? new Vector3(-8.6f, 0f, -2.6f) : new Vector3(-0.4f, 0f, -2.3f);
+        float playerYaw = worldDisasterType == GameManager.DisasterType.Flood ? 0f : 255f;
+        player.Initialize(scenario, playerSpawn, playerYaw);
         scenario.Initialize(this, player, safeTablePosition);
+        if (worldDisasterType == GameManager.DisasterType.Flood)
+            scenario.ConfigureFlood(floodWater, floodSafePosition);
         player.SetControlsEnabled(false);
 
         ui = new GameObject("Arayüz Yöneticisi").AddComponent<PrototypeUI>();
         ui.Initialize(this);
         scenario.SendMessage("RefreshHud", SendMessageOptions.DontRequireReceiver);
+        if (GameManager.Instance != null && GameManager.Instance.ConsumeStartAfterReload())
+            StartPlayableScenario();
     }
 
     private void ConfigureLighting()
@@ -137,6 +165,167 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         SinirEkle("Sol Sınır", new Vector3(-12.8f, 1.5f, -2.3f), new Vector3(0.2f, 3f, 5.5f));
         SinirEkle("Ön Sınır", new Vector3(-9.8f, 1.5f, -4.7f), new Vector3(5.8f, 3f, 0.2f));
         SinirEkle("Arka Sınır", new Vector3(-9.8f, 1.5f, 0.1f), new Vector3(5.8f, 3f, 0.2f));
+    }
+
+    private void BuildFloodWorld()
+    {
+        RenderSettings.fog = true;
+        RenderSettings.fogColor = new Color32(119, 143, 153, 255);
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogDensity = 0.012f;
+        RenderSettings.ambientSkyColor = new Color32(116, 139, 151, 255);
+        RenderSettings.ambientEquatorColor = new Color32(88, 107, 114, 255);
+        RenderSettings.ambientGroundColor = new Color32(49, 63, 70, 255);
+
+        Material ground = MakeMaterial("Sel Haritası Islak Zemin", new Color32(92, 102, 95, 255));
+        Material asphalt = MakeMaterial("Islak Asfalt", new Color32(55, 66, 72, 255));
+        Material wall = MakeMaterial("Sel Haritası Ev Duvarı", new Color32(188, 177, 151, 255));
+        Material roof = MakeMaterial("Kiremit Çatı", new Color32(133, 72, 53, 255));
+        Material wood = MakeMaterial("Sel Haritası Ahşap", new Color32(103, 75, 55, 255));
+        Material concrete = MakeMaterial("Beton", new Color32(123, 131, 126, 255));
+        Material green = MakeMaterial("Güvenli Bölge Yeşili", new Color32(75, 146, 101, 255));
+        Material sandbag = MakeMaterial("Kum Torbası", new Color32(151, 134, 98, 255));
+        Material water = MakeMaterial("Yükselen Taşkın Suyu", new Color32(33, 98, 119, 200));
+        water.SetOverrideTag("RenderType", "Transparent");
+        if (water.HasProperty("_Surface"))
+            water.SetFloat("_Surface", 1f);
+        water.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        water.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        water.SetInt("_ZWrite", 0);
+        water.DisableKeyword("_ALPHATEST_ON");
+        water.EnableKeyword("_ALPHABLEND_ON");
+        water.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        water.renderQueue = 3000;
+
+        CreateBox("Taşkın Mahallesi Zemin", new Vector3(0f, -0.18f, 1f), new Vector3(40f, 0.36f, 32f), ground);
+        CreateBox("Mahalle Yolu", new Vector3(2f, 0.015f, 3f), new Vector3(25f, 0.05f, 6f), asphalt);
+        CreateBox("Yol Orta Çizgisi", new Vector3(2f, 0.05f, 3f), new Vector3(23f, 0.025f, 0.10f),
+            MakeMaterial("Yol Çizgisi", new Color32(224, 204, 145, 255)));
+        CreateBox("Dere Yatağı", new Vector3(1f, -0.12f, 12.5f), new Vector3(38f, 0.45f, 5.0f),
+            MakeMaterial("Dere Taşı", new Color32(88, 98, 91, 255)));
+        GameObject riverSurface = CreateBox("Dere Suyu", new Vector3(1f, -0.04f, 12.5f),
+            new Vector3(37f, 0.04f, 4.5f), water);
+        Collider riverCollider = riverSurface.GetComponent<Collider>();
+        if (riverCollider != null)
+            riverCollider.enabled = false;
+        CreateBox("Dere Kuzey Seti", new Vector3(1f, 0.42f, 15.2f), new Vector3(38f, 0.85f, 0.45f), concrete);
+        CreateBox("Dere Güney Seti", new Vector3(1f, 0.38f, 9.8f), new Vector3(38f, 0.75f, 0.42f), concrete);
+
+        GameObject floodSurface = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        floodSurface.name = "Yükselen Sel Suyu";
+        floodSurface.transform.position = new Vector3(2f, -0.04f, 2f);
+        floodSurface.transform.localScale = new Vector3(37f, 0.05f, 25f);
+        floodSurface.GetComponent<Renderer>().sharedMaterial = water;
+        Collider surfaceCollider = floodSurface.GetComponent<Collider>();
+        if (surfaceCollider != null)
+            surfaceCollider.enabled = false;
+        floodWater = floodSurface.transform;
+
+        BuildFloodHouse(wall, roof, wood, concrete, sandbag, green);
+        BuildFloodNeighborhood(concrete, roof, wall, wood);
+        BuildFloodTasks(wood, sandbag, green);
+    }
+
+    private void BuildFloodHouse(Material wall, Material roof, Material wood, Material concrete,
+        Material sandbag, Material safeMat)
+    {
+        const float left = -11f;
+        const float right = -3f;
+        const float front = 2f;
+        const float back = -6f;
+        CreateBox("Sel Evi Zemin Kat Döşemesi", new Vector3(-7f, 0.035f, -2f), new Vector3(8f, 0.07f, 8f), wood);
+        CreateBox("Sel Evi Arka Duvarı", new Vector3(-7f, 1.35f, back), new Vector3(8f, 2.7f, 0.25f), wall);
+        CreateBox("Sel Evi Sol Duvarı", new Vector3(left, 1.35f, -2f), new Vector3(0.25f, 2.7f, 8f), wall);
+        CreateBox("Sel Evi Sağ Duvarı", new Vector3(right, 1.35f, -2f), new Vector3(0.25f, 2.7f, 8f), wall);
+        CreateBox("Sel Evi Ön Duvarı Sol", new Vector3(-9.55f, 1.35f, front), new Vector3(2.9f, 2.7f, 0.25f), wall);
+        CreateBox("Sel Evi Ön Duvarı Sağ", new Vector3(-4.45f, 1.35f, front), new Vector3(2.9f, 2.7f, 0.25f), wall);
+        CreateBox("Sel Evi Kapı Üstü", new Vector3(-7f, 2.45f, front), new Vector3(2.2f, 0.5f, 0.25f), wall);
+        CreateBox("Sel Evi İkinci Kat Döşemesi", new Vector3(-7f, 2.78f, -2f), new Vector3(8f, 0.22f, 8f), wood);
+        CreateBox("Sel Evi Kırma Çatı", new Vector3(-7f, 4.5f, -2f), new Vector3(8.8f, 0.35f, 8.8f), roof);
+        CreateBox("Sel Evi Üst Kat Pencere Altlığı", new Vector3(-7f, 3.55f, -5.84f), new Vector3(2.1f, 0.15f, 0.35f), wood);
+        CreateBox("Üst Kat Güvenli Alan İşareti", new Vector3(-7f, 2.91f, -2f), new Vector3(2.4f, 0.035f, 2.4f), safeMat);
+        BuildFloodStairs(wood);
+        CreateBox("Ev Ön Sundurma", new Vector3(-7f, 0.13f, 2.65f), new Vector3(4.5f, 0.22f, 1.45f), concrete);
+        CreateBox("Ev Sağanak Oluk", new Vector3(-7f, 4.15f, 2.55f), new Vector3(8.2f, 0.12f, 0.16f), wood);
+    }
+
+    private void BuildFloodStairs(Material wood)
+    {
+        const int steps = 9;
+        for (int i = 0; i < steps; i++)
+        {
+            float height = 0.30f * (i + 1);
+            float z = -5.25f + i * 0.43f;
+            CreateBox("Üst Kata Çıkış Basamağı " + (i + 1), new Vector3(-4.25f, height * 0.5f, z),
+                new Vector3(1.45f, height, 0.58f), wood);
+        }
+        CreateBox("Merdiven Korkuluğu Sol", new Vector3(-5.03f, 1.48f, -3.35f), new Vector3(0.11f, 2.7f, 4.6f), wood);
+        CreateBox("Merdiven Korkuluğu Sağ", new Vector3(-3.47f, 1.48f, -3.35f), new Vector3(0.11f, 2.7f, 4.6f), wood);
+    }
+
+    private void BuildFloodNeighborhood(Material concrete, Material roof, Material wall, Material wood)
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            float x = -1f + i * 6.3f;
+            float height = 3.0f + (i % 3) * 0.6f;
+            CreateBox("Mahalle Evi " + (i + 1), new Vector3(x, height * 0.5f, -7.8f),
+                new Vector3(4.3f, height, 4.1f), i % 2 == 0 ? wall : concrete);
+            CreateBox("Mahalle Çatısı " + (i + 1), new Vector3(x, height + 0.2f, -7.8f),
+                new Vector3(4.6f, 0.35f, 4.4f), roof);
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            float x = -5f + i * 8f;
+            CreateBox("Sokak Lambası Direği " + (i + 1), new Vector3(x, 2.1f, 5.8f),
+                new Vector3(0.16f, 4.2f, 0.16f), wood);
+            CreateBox("Sokak Lambası Başlığı " + (i + 1), new Vector3(x + 0.45f, 4.0f, 5.8f),
+                new Vector3(1.0f, 0.14f, 0.26f), concrete);
+        }
+        CreateBox("Park Edilmiş Araç Gövdesi", new Vector3(2f, 0.65f, 5f), new Vector3(3.4f, 1.1f, 1.6f),
+            MakeMaterial("Araç Koyu Mavi", new Color32(49, 78, 93, 255)));
+        CreateBox("Araç Üst Kabini", new Vector3(2f, 1.25f, 5f), new Vector3(1.8f, 0.72f, 1.42f),
+            MakeMaterial("Araç Camı", new Color32(104, 136, 145, 255)));
+        CreateBox("Taşkın Tahliye Yolu", new Vector3(-0.1f, 0.18f, 1.0f), new Vector3(0.8f, 0.24f, 10f),
+            MakeMaterial("Yükseltilmiş Yaya Yolu", new Color32(147, 139, 114, 255)));
+    }
+
+    private void BuildFloodTasks(Material wood, Material sandbag, Material safeMat)
+    {
+        GameObject breaker = CreateBox("Elektrik Ana Şalteri", new Vector3(-10.72f, 1.4f, -1.5f),
+            new Vector3(0.22f, 0.52f, 0.42f), MakeMaterial("Şalter Kutusu", new Color32(67, 78, 81, 255)));
+        PrototypeInteractable breakerTask = breaker.AddComponent<PrototypeInteractable>();
+        breakerTask.Configure(PrototypeAction.CutFloodPower, "Su ulaşmadan elektriği ana şalterden kes");
+        scenario.AddFloodPreparationTask(breakerTask);
+
+        GameObject documents = CreateBox("Evrak ve İlaç Kutusu", new Vector3(-8.8f, 0.52f, -1.1f),
+            new Vector3(0.8f, 0.48f, 0.64f), wood);
+        PrototypeInteractable documentsTask = documents.AddComponent<PrototypeInteractable>();
+        documentsTask.Configure(PrototypeAction.RaiseFloodValuables, "Önemli evrak ve ilaçları üst kata kaldır");
+        documentsTask.ConfigureMove(documents.transform, new Vector3(-7f, 3.08f, -2.7f));
+        scenario.AddFloodPreparationTask(documentsTask);
+
+        GameObject barrier = CreateBox("Kapı Önü Kum Torbaları", new Vector3(-7f, 0.28f, 1.45f),
+            new Vector3(1.8f, 0.56f, 0.55f), sandbag);
+        PrototypeInteractable barrierTask = barrier.AddComponent<PrototypeInteractable>();
+        barrierTask.Configure(PrototypeAction.PlaceFloodBarrier, "Kapı önüne kum torbası bariyerini yerleştir");
+        barrierTask.ConfigureMove(barrier.transform, new Vector3(-7f, 0.32f, 1.88f));
+        scenario.AddFloodPreparationTask(barrierTask);
+
+        floodSafePosition = new Vector3(-7f, 2.88f, -2f);
+        CreateBox("Acil Durum Haberleşme Telsizi", new Vector3(-5.2f, 3.16f, -1.2f),
+            new Vector3(0.34f, 0.40f, 0.28f), MakeMaterial("Telsiz Sel", new Color32(45, 58, 58, 255)));
+        GameObject report = CreateBox("Acil Durum Bilgilendirme Noktası", new Vector3(-8.8f, 3.16f, -4.1f),
+            new Vector3(0.32f, 0.52f, 0.08f), safeMat);
+        PrototypeInteractable reportTask = report.AddComponent<PrototypeInteractable>();
+        reportTask.Configure(PrototypeAction.CallForFloodHelp, "Güvenli alandan 112'ye konum ve durum bildir");
+        scenario.AddFloodAfterTask(reportTask);
+
+        GameObject allClear = CreateBox("Resmî Uyarı Ekranı", new Vector3(-5.15f, 3.35f, -4.15f),
+            new Vector3(0.72f, 0.48f, 0.08f), MakeMaterial("Uyarı Ekranı", new Color32(40, 107, 94, 255)));
+        PrototypeInteractable allClearTask = allClear.AddComponent<PrototypeInteractable>();
+        allClearTask.Configure(PrototypeAction.WaitForFloodAllClear, "Resmî duyuruları izle; su çekilmeden geri dönme");
+        scenario.AddFloodAfterTask(allClearTask);
     }
 
     private void BuildTable(Material topMat, Material legMat)
@@ -609,6 +798,13 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
     public void StartPlayableScenario()
     {
+        if (GameManager.Instance != null && GameManager.Instance.SelectedDisaster != worldDisasterType)
+        {
+            GameManager.Instance.RequestStartAfterReload();
+            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+            return;
+        }
+
         Time.timeScale = 1f;
         gameStarted = true;
         paused = false;

@@ -27,7 +27,10 @@ public sealed class ProvinceMapView : MonoBehaviour
         mapRect = rect;
         highlightImage = overlay;
         if (ProvinceManager.Instance != null)
-            focusedPlate = ProvinceManager.Instance.GetLastProvincePlate();
+            focusedPlate = GameManager.Instance != null
+                && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
+                ? ProvinceManager.Instance.GetFirstFloodProvincePlate()
+                : ProvinceManager.Instance.GetLastProvincePlate();
 
         TextAsset maskAsset = Resources.Load<TextAsset>("ProvinceMap/province-id-mask");
         if (maskAsset == null)
@@ -69,6 +72,19 @@ public sealed class ProvinceMapView : MonoBehaviour
         RefreshHighlight();
     }
 
+    public void OnDisasterTypeChanged()
+    {
+        ProvinceManager.Instance?.ClearSelection();
+        SelectedPlate = 0;
+        hoveredPlate = 0;
+        focusedPlate = GameManager.Instance != null
+            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
+            ? ProvinceManager.Instance != null ? ProvinceManager.Instance.GetFirstFloodProvincePlate() : 74
+            : ProvinceManager.Instance != null ? ProvinceManager.Instance.GetLastProvincePlate() : 6;
+        ProvinceSelected?.Invoke(0);
+        RefreshHighlight();
+    }
+
     private void Update()
     {
         if (mapRect == null || maskPixels == null)
@@ -85,17 +101,41 @@ public sealed class ProvinceMapView : MonoBehaviour
             return;
 
         if (keyboard.leftArrowKey.wasPressedThisFrame || keyboard.upArrowKey.wasPressedThisFrame)
-            FocusAndSelect(Mathf.Max(1, (SelectedPlate > 0 ? SelectedPlate : focusedPlate) - 1));
+        {
+            PrototypeAudio.PlayUiSelect();
+            FocusAndSelect(FindSelectablePlate(SelectedPlate > 0 ? SelectedPlate : focusedPlate, -1));
+        }
         else if (keyboard.rightArrowKey.wasPressedThisFrame || keyboard.downArrowKey.wasPressedThisFrame)
-            FocusAndSelect(Mathf.Min(ProvinceCount, (SelectedPlate > 0 ? SelectedPlate : focusedPlate) + 1));
+        {
+            PrototypeAudio.PlayUiSelect();
+            FocusAndSelect(FindSelectablePlate(SelectedPlate > 0 ? SelectedPlate : focusedPlate, 1));
+        }
 
         if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame)
         {
+            PrototypeAudio.PlayUiSelect();
             if (SelectedPlate == 0)
                 FocusAndSelect(focusedPlate);
             if (SelectedPlate > 0)
                 ContinueRequested?.Invoke();
         }
+    }
+
+    private int FindSelectablePlate(int from, int direction)
+    {
+        int plate = from;
+        for (int attempt = 0; attempt < ProvinceCount; attempt++)
+        {
+            plate = Mathf.Clamp(plate + direction, 1, ProvinceCount);
+            if (ProvinceManager.Instance == null
+                || GameManager.Instance == null
+                || GameManager.Instance.SelectedDisaster != GameManager.DisasterType.Flood
+                || ProvinceManager.Instance.IsFloodProvince(plate))
+                return plate;
+            if (plate == 1 && direction < 0 || plate == ProvinceCount && direction > 0)
+                break;
+        }
+        return from;
     }
 
     private void ReadPointer()
@@ -128,7 +168,17 @@ public sealed class ProvinceMapView : MonoBehaviour
         if (inside && mouse.leftButton.wasPressedThisFrame)
         {
             if (hoveredPlate > 0)
+            {
+                if (ProvinceManager.Instance != null && GameManager.Instance != null
+                    && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
+                    && !ProvinceManager.Instance.IsFloodProvince(hoveredPlate))
+                {
+                    ProvinceHovered?.Invoke(-2);
+                    return;
+                }
+                PrototypeAudio.PlayUiSelect();
                 FocusAndSelect(hoveredPlate);
+            }
             else
                 ProvinceHovered?.Invoke(-1);
         }
@@ -186,9 +236,20 @@ public sealed class ProvinceMapView : MonoBehaviour
             int plate = maskPixels[index].r;
             bool selected = plate == SelectedPlate && SelectedPlate > 0;
             bool hovered = plate == hoveredPlate && hoveredPlate > 0;
+            bool completed = plate > 0 && ProvinceManager.Instance != null
+                && GameManager.Instance != null
+                && ProvinceManager.Instance.IsScenarioCompleted(plate, GameManager.Instance.SelectedDisaster);
             if (!selected && !hovered)
             {
-                highlightPixels[index] = new Color32(0, 0, 0, 0);
+                bool floodMode = GameManager.Instance != null
+                    && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
+                bool floodProvince = floodMode && plate > 0 && ProvinceManager.Instance != null
+                    && ProvinceManager.Instance.IsFloodProvince(plate);
+                highlightPixels[index] = completed
+                    ? new Color32(116, 126, 136, 190)
+                    : floodMode && plate > 0
+                        ? floodProvince ? new Color32(38, 155, 143, 78) : new Color32(55, 65, 76, 92)
+                        : new Color32(0, 0, 0, 0);
                 continue;
             }
 
@@ -197,6 +258,7 @@ public sealed class ProvinceMapView : MonoBehaviour
                 || ReadPlatePixel(x, y - 1) != plate || ReadPlatePixel(x, y + 1) != plate;
             highlightPixels[index] = edge
                 ? (hovered ? hoveredEdge : selectedEdge)
+                : completed ? new Color32(116, 126, 136, 190)
                 : (hovered ? hoveredFill : selectedFill);
         }
 

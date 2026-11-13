@@ -27,6 +27,7 @@ public sealed class PrototypeUI : MonoBehaviour
     private Text provinceHoverText;
     private Text provinceSelectedText;
     private Text provinceScenarioText;
+    private Text provinceMapSubtitle;
     private Text introProvinceLabel;
     private Text introScenarioTitle;
     private Text introScenarioInfo;
@@ -40,6 +41,8 @@ public sealed class PrototypeUI : MonoBehaviour
     private Text trappedFeedback;
     private Button[] trappedChoiceButtons;
     private Button provinceContinueButton;
+    private Button earthquakeModeButton;
+    private Button floodModeButton;
     private Button continueButton;
     private ProvinceMapView provinceMapView;
     private bool hasSavedProgress;
@@ -67,7 +70,8 @@ public sealed class PrototypeUI : MonoBehaviour
             eventObject.transform.SetParent(transform, false);
         }
 
-        hasSavedProgress = ProvinceManager.Instance != null && ProvinceManager.Instance.HasAnyCompletedScenario();
+        hasSavedProgress = ProvinceManager.Instance != null && GameManager.Instance != null
+            && ProvinceManager.Instance.HasAnyCompletedScenario(GameManager.Instance.SelectedDisaster);
         BuildMainPage();
         BuildProvincePage();
         BuildIntroPage();
@@ -84,26 +88,42 @@ public sealed class PrototypeUI : MonoBehaviour
             return;
 
         if (provincePage.activeSelf && keyboard.escapeKey.wasPressedThisFrame)
+        {
+            PrototypeAudio.PlayUiSelect();
             ShowMainPage();
+        }
         else if (introPage.activeSelf)
         {
             if (keyboard.escapeKey.wasPressedThisFrame)
+            {
+                PrototypeAudio.PlayUiSelect();
                 ShowProvincePage();
+            }
             else if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame)
+            {
+                PrototypeAudio.PlayUiSelect();
                 owner.StartPlayableScenario();
+            }
         }
         else if (pausePage.activeSelf)
         {
             if (keyboard.enterKey.wasPressedThisFrame ||
                 keyboard.numpadEnterKey.wasPressedThisFrame)
             {
+                PrototypeAudio.PlayUiSelect();
                 owner.ResumeGame();
             }
         }
         else if (resultPage.activeSelf && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
+        {
+            PrototypeAudio.PlayUiSelect();
             ShowMainPage();
+        }
         else if (mainPage.activeSelf && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
+        {
+            PrototypeAudio.PlayUiSelect();
             ShowProvincePage();
+        }
     }
 
     private void BuildMainPage()
@@ -121,7 +141,7 @@ public sealed class PrototypeUI : MonoBehaviour
         AddImage(card.gameObject, new Color32(20, 37, 53, 245));
         AddText(card, "Kart Başlığı", "TATBİKATA HAZIR MISIN?", new Vector2(0.08f, 0.79f), new Vector2(0.92f, 0.94f),
             19, new Color32(123, 220, 204, 255), TextAnchor.MiddleLeft);
-        AddText(card, "Kart Açıklaması", "Türkiye'nin 81 ilinden birini seçip 3D deprem hazırlık tatbikatına katıl.",
+        AddText(card, "Kart Açıklaması", "Afet türünü ve ili seç; bağımsız 3D farkındalık tatbikatına katıl.",
             new Vector2(0.08f, 0.64f), new Vector2(0.92f, 0.79f), 20, Color.white, TextAnchor.UpperLeft);
 
         AddButton(card, "Yeni Oyun", "YENİ TATBİKAT", new Vector2(0.08f, 0.47f), new Vector2(0.92f, 0.61f), true,
@@ -139,7 +159,13 @@ public sealed class PrototypeUI : MonoBehaviour
         provincePage = MakePage("İl Seçimi", new Color32(10, 20, 32, 250));
         AddText(provincePage.transform, "Başlık", "Türkiye haritasından il seç",
             new Vector2(0.04f, 0.87f), new Vector2(0.70f, 0.96f), 38, Color.white, TextAnchor.MiddleLeft);
-        AddText(provincePage.transform, "Harita açıklaması", "81 il • Fareyle üzerine gel, tıklayarak seç veya ok tuşlarıyla ilerle",
+        earthquakeModeButton = AddButton(provincePage.transform, "Deprem Türü", "DEPREM",
+            new Vector2(0.72f, 0.875f), new Vector2(0.835f, 0.945f), false,
+            () => SelectDisaster(GameManager.DisasterType.Earthquake));
+        floodModeButton = AddButton(provincePage.transform, "Sel Türü", "SEL / TAŞKIN",
+            new Vector2(0.845f, 0.875f), new Vector2(0.97f, 0.945f), false,
+            () => SelectDisaster(GameManager.DisasterType.Flood));
+        provinceMapSubtitle = AddText(provincePage.transform, "Harita açıklaması", "İl sınırlarının üzerine gel; tıklayarak veya ok tuşlarıyla seç",
             new Vector2(0.04f, 0.82f), new Vector2(0.70f, 0.88f), 17, new Color32(171, 193, 208, 255), TextAnchor.MiddleLeft);
 
         RectTransform mapFrame = MakeRect(provincePage.transform, "İl Sınırları Haritası Çerçevesi",
@@ -186,6 +212,7 @@ public sealed class PrototypeUI : MonoBehaviour
         AddText(provincePage.transform, "Harita Atfı",
             "İl sınırları: geoBoundaries / OpenStreetMap contributors • CC BY-SA 2.0 • geoboundaries.org",
             new Vector2(0.18f, 0.045f), new Vector2(0.70f, 0.12f), 14, new Color32(142, 164, 180, 255), TextAnchor.MiddleLeft);
+        UpdateDisasterSelection(false);
     }
 
     private void BuildIntroPage()
@@ -304,7 +331,8 @@ public sealed class PrototypeUI : MonoBehaviour
     public void ShowMainPage()
     {
         SetPages(mainPage);
-        hasSavedProgress = ProvinceManager.Instance != null && ProvinceManager.Instance.HasAnyCompletedScenario();
+        hasSavedProgress = ProvinceManager.Instance != null && GameManager.Instance != null
+            && ProvinceManager.Instance.HasAnyCompletedScenario(GameManager.Instance.SelectedDisaster);
         if (continueButton != null)
             continueButton.GetComponentInChildren<Text>().text = hasSavedProgress ? "KAYITLI İLERLEME" : "KAYIT YOK";
         GameManager.Instance?.ReturnToMenu();
@@ -331,9 +359,13 @@ public sealed class PrototypeUI : MonoBehaviour
             return;
         }
 
+        bool flood = GameManager.Instance != null
+            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
         introProvinceLabel.text = selected.name + "  •  PLAKA " + selected.PlateLabel + "  /  EĞİTİM TATBİKATI";
-        introScenarioTitle.text = selected.trainingScenarioTitle;
-        introScenarioInfo.text = "Rafı sabitle, ağır eşyayı aşağı al ve çıkış yolunu aç.\nSarsıntıda sağlam bir eşyanın yanında çök-kapan-tutun.\nSonrasında çevreni kontrol et; gaz kokusu varsa vanayı güvenliyse kapat, kapı ve pencereleri aç ve elektrik düğmelerine dokunmadan toplanma alanına iler.\n\n" + selected.trainingScenarioNote;
+        introScenarioTitle.text = flood ? "Sel ve taşkın: evden yüksek ve güvenli alana" : selected.trainingScenarioTitle;
+        introScenarioInfo.text = flood
+            ? "Taşkın uyarısını izle, değerli eşyaları ve ilaçları yukarı kaldır; su basma riski varsa elektriği güvenli biçimde kes.\nSu yükselirken araca binme veya akıntıya girme; evin üst katına ya da belirlenmiş yüksek alana çık.\nSu çekilmeden geri dönme; kirli suya ve elektrik hatlarına yaklaşma, resmî duyuruları takip et.\n\nBu, il için tehlike tahmini değil; afet farkındalık tatbikatıdır."
+            : "Rafı sabitle, ağır eşyayı aşağı al ve çıkış yolunu aç.\nSarsıntıda sağlam bir eşyanın yanında çök-kapan-tutun.\nSonrasında çevreni kontrol et; gaz kokusu varsa vanayı güvenliyse kapat, kapı ve pencereleri aç ve elektrik düğmelerine dokunmadan toplanma alanına iler.\n\n" + selected.trainingScenarioNote;
         SetPages(introPage);
         owner.SetPlayerControls(false);
     }
@@ -345,6 +377,8 @@ public sealed class PrototypeUI : MonoBehaviour
 
         if (plateCode < 0)
             provinceHoverText.text = "Deniz alanı • il sınırının içine tıkla.";
+        else if (plateCode == -2)
+            provinceHoverText.text = "Sel/taşkın senaryosu bu il için listelenmedi. Gri olmayan bir ilden seçim yap.";
         else if (plateCode == 0)
             provinceHoverText.text = "Harita üzerinde bir il sınırının üzerine gel.";
         else
@@ -358,13 +392,66 @@ public sealed class PrototypeUI : MonoBehaviour
 
     private void HandleProvinceSelected(int plateCode)
     {
+        if (plateCode <= 0)
+        {
+            provinceSelectedText.text = "Haritada bir il seç";
+            provinceScenarioText.text = GameManager.Instance != null
+                && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
+                ? "Sel/taşkın tatbikatı için listelenen illerden birini seç. Gri iller tamamlandı; tekrar oynanabilir."
+                : "Deprem tatbikatı için bir il seç. Gri iller tamamlandı; tekrar oynanabilir.";
+            provinceContinueButton.interactable = false;
+            return;
+        }
         ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.GetProvince(plateCode) : null;
         if (province == null)
             return;
 
         provinceSelectedText.text = province.name + "  •  PLAKA " + province.PlateLabel;
-        provinceScenarioText.text = province.trainingScenarioTitle + "\n\n" + province.trainingScenarioNote;
+        bool flood = GameManager.Instance != null
+            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
+        bool completed = ProvinceManager.Instance.IsScenarioCompleted(plateCode,
+            flood ? GameManager.DisasterType.Flood : GameManager.DisasterType.Earthquake);
+        provinceScenarioText.text = (flood ? "Sel ve taşkın: güvenli tahliye" : province.trainingScenarioTitle)
+            + (completed ? "\n\n✓ Bu ilde tamamlandı — yeniden oynayabilirsin." : "\n\n" + (flood
+                ? "Taşkın tehlikesine ve geçmiş taşkın olaylarına göre seçilmiş eğitim ili."
+                : province.trainingScenarioNote));
         provinceContinueButton.interactable = true;
+    }
+
+    private void SelectDisaster(GameManager.DisasterType disaster)
+    {
+        if (GameManager.Instance == null || GameManager.Instance.SelectedDisaster == disaster)
+            return;
+        GameManager.Instance.SelectDisaster(disaster);
+        UpdateDisasterSelection(true);
+    }
+
+    private void UpdateDisasterSelection(bool resetMap)
+    {
+        bool flood = GameManager.Instance != null
+            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
+        if (earthquakeModeButton != null)
+            earthquakeModeButton.interactable = flood;
+        if (floodModeButton != null)
+            floodModeButton.interactable = !flood;
+        if (provinceHoverText != null)
+            provinceHoverText.text = flood
+                ? "Taşkın geçmişi/risk planlarında öne çıkan iller seçilebilir. Gri: tamamlandı, tekrar seçilebilir."
+                : "Türkiye'nin 81 ilinde deprem farkındalık tatbikatı. Gri: tamamlandı, tekrar seçilebilir.";
+        if (provinceMapSubtitle != null)
+            provinceMapSubtitle.text = flood
+                ? "Yeşil-mavi: sel/taşkın ili • Koyu: kapsam dışı • Gri: tamamlandı, tekrar seçilebilir"
+                : "81 il • Fareyle üzerine gel, tıklayarak seç veya ok tuşlarıyla ilerle";
+        if (provinceScenarioText != null)
+            provinceScenarioText.text = flood
+                ? "Sel/taşkın tatbikatı için listelenen illerden birini seç."
+                : "Deprem tatbikatı için haritadan bir il seç.";
+        if (provinceSelectedText != null)
+            provinceSelectedText.text = "Haritada bir il seç";
+        if (provinceContinueButton != null)
+            provinceContinueButton.interactable = false;
+        if (resetMap)
+            provinceMapView?.OnDisasterTypeChanged();
     }
 
     private void ShowSavedProgress()
@@ -377,13 +464,17 @@ public sealed class PrototypeUI : MonoBehaviour
 
         int plate = ProvinceManager.Instance != null ? ProvinceManager.Instance.GetLastCompletedProvincePlate() : 6;
         ProvinceManager.Instance?.SelectProvince(plate);
-        string lastKey = ProvinceManager.ProgressKey("TurkiyeAfet.Deprem.LastScore", plate);
-        string bestKey = ProvinceManager.ProgressKey("TurkiyeAfet.Deprem.BestScore", plate);
+        bool flood = GameManager.Instance != null
+            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
+        string scorePrefix = "TurkiyeAfet." + (flood ? "Sel" : "Deprem");
+        string lastKey = ProvinceManager.ProgressKey(scorePrefix + ".LastScore", plate);
+        string bestKey = ProvinceManager.ProgressKey(scorePrefix + ".BestScore", plate);
         int last = PlayerPrefs.GetInt(lastKey, plate == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.LastScore", 0) : 0);
         int best = PlayerPrefs.GetInt(bestKey, plate == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.BestScore", last) : last);
         ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.GetProvince(plate) : null;
         ShowResults(last, "Son tamamlanan senaryo: " + (province != null ? province.name : "seçilen il") +
-            " ilinde deprem hazırlığı ve güvenli tahliye. En yüksek puanın: " + best + ".\nİlerlemen bu bilgisayarda saklanıyor.");
+            (flood ? " ilinde sel ve taşkından korunma." : " ilinde deprem hazırlığı ve güvenli tahliye.")
+            + " En yüksek puanın: " + best + ".\nİlerlemen bu bilgisayarda saklanıyor.");
     }
 
     public void ShowHud()
@@ -525,7 +616,8 @@ public sealed class PrototypeUI : MonoBehaviour
     {
         trappedOverlay.SetActive(true);
         trappedOverlayImage.color = Color.black;
-        trappedTitle.text = "ENKAZ ALTINDASIN  •  ADIM " + step + "/3";
+        int totalSteps = owner != null && owner.Scenario != null ? owner.Scenario.TrappedQuestionCount : step;
+        trappedTitle.text = "ENKAZ ALTINDASIN  •  ADIM " + step + "/" + totalSteps;
         trappedQuestion.text = question;
         trappedFeedback.text = feedback;
         for (int i = 0; i < trappedChoiceButtons.Length; i++)
@@ -626,7 +718,11 @@ public sealed class PrototypeUI : MonoBehaviour
         colors.selectedColor = colors.highlightedColor;
         colors.fadeDuration = 0.12f;
         button.colors = colors;
-        button.onClick.AddListener(() => action?.Invoke());
+        button.onClick.AddListener(() =>
+        {
+            PrototypeAudio.PlayUiSelect();
+            action?.Invoke();
+        });
         AddText(rect, "Metin", label, new Vector2(0.03f, 0.04f), new Vector2(0.97f, 0.96f),
             18, Color.white, TextAnchor.MiddleCenter);
         return button;

@@ -13,7 +13,15 @@ public class GameManager : MonoBehaviour
         Results
     }
 
+    public enum DisasterType
+    {
+        Earthquake,
+        Flood
+    }
+
     public GameState CurrentState { get; private set; } = GameState.MainMenu;
+    public DisasterType SelectedDisaster { get; private set; } = DisasterType.Earthquake;
+    private bool startScenarioAfterReload;
 
     private void Awake()
     {
@@ -41,6 +49,17 @@ public class GameManager : MonoBehaviour
     public void StartScenario()
     {
         ChangeState(GameState.Scenario);
+    }
+
+    public void SelectDisaster(DisasterType disaster) => SelectedDisaster = disaster;
+
+    public void RequestStartAfterReload() => startScenarioAfterReload = true;
+
+    public bool ConsumeStartAfterReload()
+    {
+        bool shouldStart = startScenarioAfterReload;
+        startScenarioAfterReload = false;
+        return shouldStart;
     }
 
     public void ShowResults()

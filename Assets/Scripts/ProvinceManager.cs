@@ -23,6 +23,15 @@ public sealed class ProvinceCatalogDocument
 
 public sealed class ProvinceManager : MonoBehaviour
 {
+    // A focused pilot set of provinces with documented major floods, recurring river-flood
+    // exposure, or official basin flood-management coverage. This is not a ranking or a
+    // claim that other Turkish provinces are flood-free. Example official records:
+    // AFAD 2021 Bartın/Kastamonu/Sinop, AFAD 2021 Rize/Artvin, and provincial IRAP/SYGM plans.
+    private static readonly HashSet<int> FloodProvincePlates = new HashSet<int>
+    {
+        1, 7, 8, 16, 22, 28, 33, 34, 35, 37, 39, 52, 53, 55, 57, 59, 61, 67, 74, 81
+    };
+
     public static ProvinceManager Instance { get; private set; }
 
     private readonly Dictionary<int, ProvinceInfo> byPlate = new Dictionary<int, ProvinceInfo>();
@@ -30,6 +39,24 @@ public sealed class ProvinceManager : MonoBehaviour
 
     public IReadOnlyList<ProvinceInfo> Provinces => provinces;
     public ProvinceInfo SelectedProvince { get; private set; }
+
+    public bool IsFloodProvince(int plateCode) => FloodProvincePlates.Contains(plateCode);
+
+    public int GetFirstFloodProvincePlate()
+    {
+        foreach (ProvinceInfo province in provinces)
+            if (IsFloodProvince(province.plateCode))
+                return province.plateCode;
+        return 74;
+    }
+
+    public bool IsScenarioCompleted(int plateCode, GameManager.DisasterType disaster)
+    {
+        string name = disaster == GameManager.DisasterType.Flood ? "Sel" : "Deprem";
+        return PlayerPrefs.GetInt(ProgressKey("TurkiyeAfet." + name + ".Completed", plateCode), 0) == 1;
+    }
+
+    public void ClearSelection() => SelectedProvince = null;
 
     private void Awake()
     {
@@ -108,6 +135,10 @@ public sealed class ProvinceManager : MonoBehaviour
         ProvinceInfo province = GetProvince(plateCode);
         if (province == null)
             return false;
+        if (GameManager.Instance != null
+            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
+            && !IsFloodProvince(plateCode))
+            return false;
 
         SelectedProvince = province;
         PlayerPrefs.SetInt("TurkiyeAfet.LastProvince", plateCode);
@@ -122,19 +153,24 @@ public sealed class ProvinceManager : MonoBehaviour
 
     public int GetLastCompletedProvincePlate()
     {
+        bool flood = GameManager.Instance != null
+            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
+        string completedKey = "TurkiyeAfet." + (flood ? "Sel" : "Deprem") + ".Completed";
         int plate = PlayerPrefs.GetInt("TurkiyeAfet.LastCompletedProvince", GetLastProvincePlate());
         ProvinceInfo recent = GetProvince(plate);
-        if (recent != null && PlayerPrefs.GetInt(ProgressKey("TurkiyeAfet.Deprem.Completed", plate),
-            plate == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) : 0) == 1)
+        if (recent != null && (!flood || IsFloodProvince(plate))
+            && PlayerPrefs.GetInt(ProgressKey(completedKey, plate),
+                !flood && plate == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) : 0) == 1)
             return plate;
 
         foreach (ProvinceInfo province in provinces)
         {
-            if (PlayerPrefs.GetInt(ProgressKey("TurkiyeAfet.Deprem.Completed", province.plateCode),
-                province.plateCode == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) : 0) == 1)
+            if ((!flood || IsFloodProvince(province.plateCode))
+                && PlayerPrefs.GetInt(ProgressKey(completedKey, province.plateCode),
+                    !flood && province.plateCode == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) : 0) == 1)
                 return province.plateCode;
         }
-        return 6;
+        return flood ? GetFirstFloodProvincePlate() : 6;
     }
 
     public static string ProgressKey(string key, int plateCode)
@@ -144,13 +180,22 @@ public sealed class ProvinceManager : MonoBehaviour
 
     public bool HasAnyCompletedScenario()
     {
+        if (HasAnyCompletedScenario(GameManager.DisasterType.Earthquake))
+            return true;
+        return HasAnyCompletedScenario(GameManager.DisasterType.Flood);
+    }
+
+    public bool HasAnyCompletedScenario(GameManager.DisasterType disaster)
+    {
         foreach (ProvinceInfo province in provinces)
         {
-            if (PlayerPrefs.GetInt(ProgressKey("TurkiyeAfet.Deprem.Completed", province.plateCode), 0) == 1)
+            if ((disaster != GameManager.DisasterType.Flood || IsFloodProvince(province.plateCode))
+                && IsScenarioCompleted(province.plateCode, disaster))
                 return true;
         }
 
         // Preserve a completion saved by the original Ankara-only prototype.
-        return PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) == 1;
+        return disaster == GameManager.DisasterType.Earthquake
+            && PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) == 1;
     }
 }

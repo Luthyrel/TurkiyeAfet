@@ -327,6 +327,10 @@ public sealed class PrototypePlayerController : MonoBehaviour
             UpdateInteractionPrompt();
             UpdateTargetGuidance();
         }
+        else
+        {
+            PrototypeAudio.SetMovement(false, false, false);
+        }
     }
 
     private void LateUpdate()
@@ -709,15 +713,19 @@ public sealed class PrototypePlayerController : MonoBehaviour
 
         if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
         {
+            PrototypeAudio.PlayUiSelect();
             PrototypeBootstrap.Instance.TogglePause();
             return;
         }
 
         if (keyboard != null && keyboard.cKey.wasPressedThisFrame)
         {
-            if (holdingTable && scenario != null)
+            bool wasHoldingTable = holdingTable;
+            if (wasHoldingTable && scenario != null)
                 scenario.CancelTableHold("Tutunmayı bıraktın. Sarsıntı sürerken yeniden güvenli konuma geçip E veya sol tıkla tutun.");
             crouched = !crouched;
+            if (!wasHoldingTable)
+                PrototypeAudio.PlayCrouch();
             return;
         }
 
@@ -741,7 +749,10 @@ public sealed class PrototypePlayerController : MonoBehaviour
     private void ReadMovement()
     {
         if (Keyboard.current == null || character == null)
+        {
+            PrototypeAudio.SetMovement(false, false, false);
             return;
+        }
 
         Vector2 input = Vector2.zero;
         if (Keyboard.current.wKey.isPressed) input.y += 1f;
@@ -806,10 +817,13 @@ public sealed class PrototypePlayerController : MonoBehaviour
                 SetAnimation("Walk");
             else
                 SetAnimation("Idle");
+
+            PrototypeAudio.SetMovement(moving && character.isGrounded, running, crouched);
         }
 
         if (holdingTable)
         {
+            PrototypeAudio.SetMovement(false, false, false);
             SetAnimation("Crouch");
         }
 
@@ -859,6 +873,13 @@ public sealed class PrototypePlayerController : MonoBehaviour
     {
         if (scenario == null || PrototypeBootstrap.Instance == null)
             return;
+
+        if (scenario.IsFloodScenario && (scenario.IsFlooding
+            || (scenario.CurrentPhase == PrototypeScenario.Phase.Aftershock && !scenario.IsFloodEvacuated)))
+        {
+            PrototypeBootstrap.Instance.SetPrompt("Su yükseliyor. Akıntıya girme; evin üst katındaki güvenli alana çık.");
+            return;
+        }
 
         if (scenario.IsShaking)
         {
@@ -927,7 +948,14 @@ public sealed class PrototypePlayerController : MonoBehaviour
         Vector3 targetPosition;
         string targetName;
         string action;
-        if (scenario.IsShaking)
+        if (scenario.IsFloodScenario && (scenario.IsFlooding
+            || (scenario.CurrentPhase == PrototypeScenario.Phase.Aftershock && !scenario.IsFloodEvacuated)))
+        {
+            targetPosition = scenario.FloodSafePosition;
+            targetName = "Üst kattaki güvenli alan";
+            action = "Su basmadan merdivenlerden çık";
+        }
+        else if (scenario.IsShaking)
         {
             targetPosition = scenario.HoldZonePosition;
             targetName = "Sağlam masa";
@@ -994,14 +1022,32 @@ public sealed class PrototypePlayerController : MonoBehaviour
         if (playerCamera == null)
             return null;
 
-        Ray ray = new Ray(
-            playerCamera.transform.position,
-            playerCamera.transform.forward
-        );
+        bool thirdPerson = crouched || holdingTable;
+        float rayDistance = interactionDistance + (thirdPerson ? cameraDistanceCurrent : 0f);
+        Ray ray = playerCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        RaycastHit[] hits = Physics.RaycastAll(ray, rayDistance, Physics.DefaultRaycastLayers,
+            QueryTriggerInteraction.Ignore);
 
-        if (Physics.Raycast(ray, out RaycastHit hit, interactionDistance))
-            return hit.collider.GetComponentInParent<PrototypeInteractable>();
+        bool foundValidCollider = false;
+        RaycastHit nearestHit = default;
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hitCollider = hits[i].collider;
+            if (hitCollider == null || hitCollider.transform == transform
+                || hitCollider.transform.IsChildOf(transform)
+                || hitCollider.transform == playerCamera.transform
+                || hitCollider.transform.IsChildOf(playerCamera.transform))
+                continue;
 
-        return null;
+            if (!foundValidCollider || hits[i].distance < nearestHit.distance)
+            {
+                foundValidCollider = true;
+                nearestHit = hits[i];
+            }
+        }
+
+        return foundValidCollider
+            ? nearestHit.collider.GetComponentInParent<PrototypeInteractable>()
+            : null;
     }
 }

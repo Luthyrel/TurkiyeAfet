@@ -9,7 +9,12 @@ public enum PrototypeAction
     OpenWindows,
     PrepareDisasterBag,
     CollectBagItem,
-    OpenExitDoor
+    OpenExitDoor,
+    CutFloodPower,
+    RaiseFloodValuables,
+    PlaceFloodBarrier,
+    CallForFloodHelp,
+    WaitForFloodAllClear
 }
 
 public sealed class PrototypeInteractable : MonoBehaviour
