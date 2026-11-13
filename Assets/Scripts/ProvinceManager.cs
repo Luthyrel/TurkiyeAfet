@@ -42,6 +42,13 @@ public sealed class ProvinceManager : MonoBehaviour
 
     public bool IsFloodProvince(int plateCode) => FloodProvincePlates.Contains(plateCode);
 
+    public GameManager.DisasterType GetPrimaryDisasterForProvince(int plateCode)
+    {
+        return IsFloodProvince(plateCode)
+            ? GameManager.DisasterType.Flood
+            : GameManager.DisasterType.Earthquake;
+    }
+
     public int GetFirstFloodProvincePlate()
     {
         foreach (ProvinceInfo province in provinces)
@@ -52,8 +59,28 @@ public sealed class ProvinceManager : MonoBehaviour
 
     public bool IsScenarioCompleted(int plateCode, GameManager.DisasterType disaster)
     {
+        if (GetPrimaryDisasterForProvince(plateCode) != disaster)
+            return false;
+
         string name = disaster == GameManager.DisasterType.Flood ? "Sel" : "Deprem";
-        return PlayerPrefs.GetInt(ProgressKey("TurkiyeAfet." + name + ".Completed", plateCode), 0) == 1;
+        bool provinceComplete = PlayerPrefs.GetInt(ProgressKey("TurkiyeAfet." + name + ".Completed", plateCode), 0) == 1;
+        return provinceComplete || HasAnyRecordedCompletion(disaster);
+    }
+
+    private bool HasAnyRecordedCompletion(GameManager.DisasterType disaster)
+    {
+        string name = disaster == GameManager.DisasterType.Flood ? "Sel" : "Deprem";
+        if (PlayerPrefs.GetInt("TurkiyeAfet." + name + ".Completed", 0) == 1)
+            return true;
+
+        // Migrate old province-specific saves into the hazard-wide completed state.
+        for (int plate = 1; plate <= 81; plate++)
+        {
+            if (PlayerPrefs.GetInt(ProgressKey("TurkiyeAfet." + name + ".Completed", plate), 0) == 1)
+                return true;
+        }
+        return disaster == GameManager.DisasterType.Earthquake
+            && PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) == 1;
     }
 
     public void ClearSelection() => SelectedProvince = null;
@@ -134,10 +161,6 @@ public sealed class ProvinceManager : MonoBehaviour
     {
         ProvinceInfo province = GetProvince(plateCode);
         if (province == null)
-            return false;
-        if (GameManager.Instance != null
-            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
-            && !IsFloodProvince(plateCode))
             return false;
 
         SelectedProvince = province;

@@ -28,8 +28,6 @@ public sealed class PrototypeUI : MonoBehaviour
     private Text provinceSelectedText;
     private Text provinceScenarioText;
     private Text provinceMapSubtitle;
-    private Button earthquakeModeButton;
-    private Button floodModeButton;
     private Text introProvinceLabel;
     private Text introScenarioTitle;
     private Text introScenarioInfo;
@@ -141,7 +139,7 @@ public sealed class PrototypeUI : MonoBehaviour
         AddImage(card.gameObject, new Color32(20, 37, 53, 245));
         AddText(card, "Kart Başlığı", "TATBİKATA HAZIR MISIN?", new Vector2(0.08f, 0.79f), new Vector2(0.92f, 0.94f),
             19, new Color32(123, 220, 204, 255), TextAnchor.MiddleLeft);
-        AddText(card, "Kart Açıklaması", "Afet türünü ve ili seç; bağımsız 3D farkındalık tatbikatına katıl.",
+        AddText(card, "Kart Açıklaması", "İl seçerek afet farkındalık tatbikatına katıl.",
             new Vector2(0.08f, 0.64f), new Vector2(0.92f, 0.79f), 20, Color.white, TextAnchor.UpperLeft);
 
         AddButton(card, "Yeni Oyun", "YENİ TATBİKAT", new Vector2(0.08f, 0.47f), new Vector2(0.92f, 0.61f), true,
@@ -159,7 +157,7 @@ public sealed class PrototypeUI : MonoBehaviour
         provincePage = MakePage("İl Seçimi", new Color32(10, 20, 32, 250));
         AddText(provincePage.transform, "Başlık", "Türkiye haritasından il seç",
             new Vector2(0.04f, 0.87f), new Vector2(0.70f, 0.96f), 38, Color.white, TextAnchor.MiddleLeft);
-        provinceMapSubtitle = AddText(provincePage.transform, "Harita açıklaması", "81 il • Fareyle üzerine gel, tıklayarak seç veya ok tuşlarıyla ilerle",
+        provinceMapSubtitle = AddText(provincePage.transform, "Harita açıklaması", "İl sınırlarının üzerine gel; tıklayarak veya ok tuşlarıyla seç",
             new Vector2(0.04f, 0.82f), new Vector2(0.70f, 0.88f), 17, new Color32(171, 193, 208, 255), TextAnchor.MiddleLeft);
 
         RectTransform mapFrame = MakeRect(provincePage.transform, "İl Sınırları Haritası Çerçevesi",
@@ -187,32 +185,25 @@ public sealed class PrototypeUI : MonoBehaviour
         RectTransform details = MakeRect(provincePage.transform, "İl Bilgi Kartı",
             new Vector2(0.73f, 0.155f), new Vector2(0.97f, 0.81f));
         AddImage(details.gameObject, new Color32(20, 37, 53, 245));
-        AddText(details, "Afet Türü Etiketi", "Afet türü", new Vector2(0.08f, 0.89f), new Vector2(0.92f, 0.98f),
+        AddText(details, "Seçim etiketi", "İl bilgisi", new Vector2(0.08f, 0.84f), new Vector2(0.92f, 0.96f),
             17, new Color32(94, 215, 196, 255), TextAnchor.MiddleLeft);
-        earthquakeModeButton = AddButton(details, "Deprem Türü", "DEPREM",
-            new Vector2(0.08f, 0.78f), new Vector2(0.48f, 0.88f), false,
-            () => SelectDisaster(GameManager.DisasterType.Earthquake));
-        floodModeButton = AddButton(details, "Sel Türü", "SEL / TAŞKIN",
-            new Vector2(0.52f, 0.78f), new Vector2(0.92f, 0.88f), false,
-            () => SelectDisaster(GameManager.DisasterType.Flood));
         provinceSelectedText = AddText(details, "İl Adı", "Haritada bir il seç",
-            new Vector2(0.08f, 0.62f), new Vector2(0.92f, 0.77f), 28, Color.white, TextAnchor.MiddleLeft);
+            new Vector2(0.08f, 0.66f), new Vector2(0.92f, 0.84f), 31, Color.white, TextAnchor.MiddleLeft);
         provinceHoverText = AddText(details, "Harita Önizlemesi", "İl sınırlarının üzerine gelerek adını gör.",
-            new Vector2(0.08f, 0.50f), new Vector2(0.92f, 0.61f), 16, new Color32(171, 193, 208, 255), TextAnchor.MiddleLeft);
+            new Vector2(0.08f, 0.54f), new Vector2(0.92f, 0.65f), 16, new Color32(171, 193, 208, 255), TextAnchor.MiddleLeft);
         provinceScenarioText = AddText(details, "Senaryo Bilgisi", "İl seçimi yapılınca eğitim senaryosu burada gösterilir.",
-            new Vector2(0.08f, 0.25f), new Vector2(0.92f, 0.48f), 17, new Color32(198, 211, 224, 255), TextAnchor.UpperLeft);
+            new Vector2(0.08f, 0.28f), new Vector2(0.92f, 0.52f), 18, new Color32(198, 211, 224, 255), TextAnchor.UpperLeft);
         provinceContinueButton = AddButton(details, "Tatbikata Devam", "SENARYOYU GÖR",
-            new Vector2(0.08f, 0.09f), new Vector2(0.92f, 0.22f), true, ShowIntroPage);
+            new Vector2(0.08f, 0.10f), new Vector2(0.92f, 0.23f), true, ShowIntroPage);
         provinceContinueButton.interactable = false;
         AddText(details, "Klavye Yardımı", "← / → il seç   •   Enter devam",
-            new Vector2(0.08f, 0.015f), new Vector2(0.92f, 0.08f), 15, new Color32(171, 193, 208, 255), TextAnchor.MiddleLeft);
+            new Vector2(0.08f, 0.025f), new Vector2(0.92f, 0.09f), 15, new Color32(171, 193, 208, 255), TextAnchor.MiddleLeft);
 
         AddButton(provincePage.transform, "Geri", "ANA MENÜ",
             new Vector2(0.035f, 0.055f), new Vector2(0.155f, 0.12f), false, ShowMainPage);
         AddText(provincePage.transform, "Harita Atfı",
             "İl sınırları: geoBoundaries / OpenStreetMap contributors • CC BY-SA 2.0 • geoboundaries.org",
             new Vector2(0.18f, 0.045f), new Vector2(0.70f, 0.12f), 14, new Color32(142, 164, 180, 255), TextAnchor.MiddleLeft);
-        UpdateDisasterSelection(false);
     }
 
     private void BuildIntroPage()
@@ -377,17 +368,29 @@ public sealed class PrototypeUI : MonoBehaviour
             return;
 
         if (plateCode < 0)
+        {
             provinceHoverText.text = "Deniz alanı • il sınırının içine tıkla.";
-        else if (plateCode == -2)
-            provinceHoverText.text = "Sel/taşkın senaryosu bu il için listelenmedi. Gri olmayan bir ilden seçim yap.";
+            RestoreProvinceSelectionInfo();
+        }
         else if (plateCode == 0)
+        {
             provinceHoverText.text = "Harita üzerinde bir il sınırının üzerine gel.";
+            RestoreProvinceSelectionInfo();
+        }
         else
         {
             ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.GetProvince(plateCode) : null;
-            provinceHoverText.text = province != null
-                ? "ÖNİZLEME  •  " + province.name + "  /  PLAKA " + province.PlateLabel
-                : string.Empty;
+            if (province == null)
+            {
+                provinceHoverText.text = string.Empty;
+                return;
+            }
+
+            GameManager.DisasterType disaster = ProvinceManager.Instance.GetPrimaryDisasterForProvince(plateCode);
+            bool flood = disaster == GameManager.DisasterType.Flood;
+            provinceHoverText.text = "ÖNİZLEME • " + province.name + " / " + province.PlateLabel
+                + " • AFET: " + (flood ? "SEL / TAŞKIN" : "DEPREM");
+            DisplayProvinceInfo(plateCode, false);
         }
     }
 
@@ -395,52 +398,44 @@ public sealed class PrototypeUI : MonoBehaviour
     {
         if (plateCode <= 0)
         {
-            provinceSelectedText.text = "Haritada bir il seç";
-            provinceScenarioText.text = GameManager.Instance != null
-                && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
-                ? "Sel/taşkın tatbikatı için listelenen illerden birini seç. Gri iller tamamlandı; tekrar oynanabilir."
-                : "Deprem tatbikatı için bir il seç. Gri iller tamamlandı; tekrar oynanabilir.";
-            provinceContinueButton.interactable = false;
+            RestoreProvinceSelectionInfo();
             return;
         }
+        DisplayProvinceInfo(plateCode, true);
+    }
+
+    private void DisplayProvinceInfo(int plateCode, bool selected)
+    {
         ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.GetProvince(plateCode) : null;
         if (province == null)
             return;
 
+        GameManager.DisasterType disaster = ProvinceManager.Instance.GetPrimaryDisasterForProvince(plateCode);
+        GameManager.Instance?.SelectDisaster(disaster);
+        bool flood = disaster == GameManager.DisasterType.Flood;
         provinceSelectedText.text = province.name + "  •  PLAKA " + province.PlateLabel;
-        bool flood = GameManager.Instance != null
-            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
         bool completed = ProvinceManager.Instance.IsScenarioCompleted(plateCode,
             flood ? GameManager.DisasterType.Flood : GameManager.DisasterType.Earthquake);
         provinceScenarioText.text = "Afet türü: " + (flood ? "Sel ve taşkın" : "Deprem")
             + "\n" + (flood ? "Sel ve taşkın: güvenli tahliye" : province.trainingScenarioTitle)
-            + (completed ? "\n\n✓ Bu ilde tamamlandı — yeniden oynayabilirsin." : "\n\n" + (flood
+            + (completed ? "\n\n✓ Bu afet türü tamamlandı — ilgili iller gri; tekrar seçilebilir." : "\n\n" + (flood
                 ? "Taşkın tehlikesine ve geçmiş taşkın olaylarına göre seçilmiş eğitim ili."
                 : province.trainingScenarioNote));
-        provinceContinueButton.interactable = true;
+        provinceContinueButton.interactable = selected;
     }
 
-    private void SelectDisaster(GameManager.DisasterType disaster)
+    private void RestoreProvinceSelectionInfo()
     {
-        if (GameManager.Instance == null || GameManager.Instance.SelectedDisaster == disaster)
+        int selectedPlate = provinceMapView != null ? provinceMapView.SelectedPlate : 0;
+        if (selectedPlate > 0)
+        {
+            DisplayProvinceInfo(selectedPlate, true);
             return;
-        GameManager.Instance.SelectDisaster(disaster);
-        UpdateDisasterSelection(true);
-    }
+        }
 
-    private void UpdateDisasterSelection(bool resetMap)
-    {
-        bool flood = GameManager.Instance != null
-            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
-        if (earthquakeModeButton != null) earthquakeModeButton.interactable = flood;
-        if (floodModeButton != null) floodModeButton.interactable = !flood;
-        if (provinceSelectedText != null) provinceSelectedText.text = "Haritada bir il seç";
-        if (provinceScenarioText != null)
-            provinceScenarioText.text = flood
-                ? "Sel ve taşkın tatbikatı için listelenen illerden birini seç."
-                : "Deprem tatbikatı için haritadan bir il seç.";
-        if (provinceContinueButton != null) provinceContinueButton.interactable = false;
-        if (resetMap) provinceMapView?.OnDisasterTypeChanged();
+        provinceSelectedText.text = "Haritada bir il seç";
+        provinceScenarioText.text = "İl seçtiğinde o il için belirlenen yaygın afet burada gösterilir. Gri iller tamamlandı; yeniden seçilebilir.";
+        provinceContinueButton.interactable = false;
     }
 
     private void ShowSavedProgress()

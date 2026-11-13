@@ -240,27 +240,76 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         CreateBox("Sel Evi Ön Duvarı Sol", new Vector3(-9.55f, 1.35f, front), new Vector3(2.9f, 2.7f, 0.25f), wall);
         CreateBox("Sel Evi Ön Duvarı Sağ", new Vector3(-4.45f, 1.35f, front), new Vector3(2.9f, 2.7f, 0.25f), wall);
         CreateBox("Sel Evi Kapı Üstü", new Vector3(-7f, 2.45f, front), new Vector3(2.2f, 0.5f, 0.25f), wall);
-        CreateBox("Sel Evi İkinci Kat Döşemesi", new Vector3(-7f, 2.78f, -2f), new Vector3(8f, 0.22f, 8f), wood);
-        CreateBox("Sel Evi Kırma Çatı", new Vector3(-7f, 4.5f, -2f), new Vector3(8.8f, 0.35f, 8.8f), roof);
+        // Split the upper floor around the stairwell so the player can actually climb through it.
+        CreateBox("Sel Evi Üst Kat Döşemesi Sol", new Vector3(-8.2f, 2.78f, -2f), new Vector3(5.6f, 0.22f, 8f), wood);
+        CreateBox("Sel Evi Üst Kat Döşemesi Ön", new Vector3(-7f, 2.78f, 0.4f), new Vector3(8f, 0.22f, 3.2f), wood);
+        CreateBox("Sel Evi Üst Kat Döşemesi Arka", new Vector3(-7f, 2.78f, -5.85f), new Vector3(8f, 0.22f, 0.3f), wood);
+        CreateBox("Sel Evi Üst Kat Sol Duvarı", new Vector3(-10.88f, 3.88f, -2f), new Vector3(0.24f, 2f, 8f), wall);
+        CreateBox("Sel Evi Üst Kat Sağ Duvarı", new Vector3(-3.12f, 3.88f, -2f), new Vector3(0.24f, 2f, 8f), wall);
+        CreateBox("Sel Evi Üst Kat Arka Duvarı", new Vector3(-7f, 3.88f, -5.88f), new Vector3(8f, 2f, 0.24f), wall);
+        CreateBox("Sel Evi Üst Kat Ön Duvarı", new Vector3(-7f, 3.88f, 1.88f), new Vector3(8f, 2f, 0.24f), wall);
+        CreateBox("Sel Evi Kırma Çatı", new Vector3(-7f, 5.15f, -2f), new Vector3(8.8f, 0.35f, 8.8f), roof);
         CreateBox("Sel Evi Üst Kat Pencere Altlığı", new Vector3(-7f, 3.55f, -5.84f), new Vector3(2.1f, 0.15f, 0.35f), wood);
         CreateBox("Üst Kat Güvenli Alan İşareti", new Vector3(-7f, 2.91f, -2f), new Vector3(2.4f, 0.035f, 2.4f), safeMat);
-        BuildFloodStairs(wood);
+        BuildFloodStairs(wood, safeMat);
         CreateBox("Ev Ön Sundurma", new Vector3(-7f, 0.13f, 2.65f), new Vector3(4.5f, 0.22f, 1.45f), concrete);
-        CreateBox("Ev Sağanak Oluk", new Vector3(-7f, 4.15f, 2.55f), new Vector3(8.2f, 0.12f, 0.16f), wood);
+        CreateBox("Ev Sağanak Oluk", new Vector3(-7f, 5.0f, 2.55f), new Vector3(8.2f, 0.12f, 0.16f), wood);
     }
 
-    private void BuildFloodStairs(Material wood)
+    private void BuildFloodStairs(Material wood, Material safeMat)
     {
         const int steps = 9;
+        Material tread = MakeMaterial("Açık Renk Merdiven Basamağı", new Color32(191, 157, 105, 255));
         for (int i = 0; i < steps; i++)
         {
-            float height = 0.30f * (i + 1);
+            float top = 0.30f * (i + 1);
             float z = -5.25f + i * 0.43f;
-            CreateBox("Üst Kata Çıkış Basamağı " + (i + 1), new Vector3(-4.25f, height * 0.5f, z),
-                new Vector3(1.45f, height, 0.58f), wood);
+            CreateBox("Üst Kata Çıkış Basamağı " + (i + 1), new Vector3(-4.25f, top - 0.09f, z),
+                new Vector3(1.7f, 0.18f, 0.62f), tread);
+            CreateBox("Merdiven Basamak Önü " + (i + 1), new Vector3(-4.25f, top * 0.5f, z + 0.27f),
+                new Vector3(1.7f, top, 0.08f), wood);
         }
-        CreateBox("Merdiven Korkuluğu Sol", new Vector3(-5.03f, 1.48f, -3.35f), new Vector3(0.11f, 2.7f, 4.6f), wood);
-        CreateBox("Merdiven Korkuluğu Sağ", new Vector3(-3.47f, 1.48f, -3.35f), new Vector3(0.11f, 2.7f, 4.6f), wood);
+        foreach (float side in new[] { -1f, 1f })
+        {
+            float x = -4.25f + side * 1.02f;
+            for (int i = 0; i < steps; i += 2)
+            {
+                float z = -5.25f + i * 0.43f;
+                float top = 0.30f * (i + 1);
+                CreateBox("Merdiven Korkuluk Direği", new Vector3(x, top * 0.5f + 0.12f, z),
+                    new Vector3(0.08f, top + 0.24f, 0.08f), wood);
+            }
+            GameObject handrail = CreateBox("Merdiven Tırabzanı", new Vector3(x, 1.38f, -3.35f),
+                new Vector3(0.09f, 0.09f, 4.5f), wood);
+            handrail.transform.rotation = Quaternion.Euler(-37f, 0f, 0f);
+        }
+
+        GameObject stairSign = CreateBox("Üst Kata Çıkış Levhası", new Vector3(-4.25f, 2.18f, -5.72f),
+            new Vector3(2.8f, 0.95f, 0.12f), safeMat);
+        Collider signCollider = stairSign.GetComponent<Collider>();
+        if (signCollider != null)
+            signCollider.enabled = false;
+        GameObject signTextObject = new GameObject("Üst Kat Yönlendirme Yazısı");
+        signTextObject.transform.position = new Vector3(-4.25f, 2.18f, -5.64f);
+        TextMesh signText = signTextObject.AddComponent<TextMesh>();
+        signText.text = "ÜST KAT  ↑";
+        signText.anchor = TextAnchor.MiddleCenter;
+        signText.alignment = TextAlignment.Center;
+        signText.fontSize = 54;
+        signText.characterSize = 0.045f;
+        signText.color = Color.white;
+
+        GameObject routeObject = new GameObject("Merdivenlere Giden Yeşil Yön Çizgisi");
+        LineRenderer route = routeObject.AddComponent<LineRenderer>();
+        route.useWorldSpace = true;
+        route.positionCount = 3;
+        route.startWidth = 0.12f;
+        route.endWidth = 0.12f;
+        route.material = safeMat;
+        route.numCapVertices = 4;
+        route.SetPosition(0, new Vector3(-8.3f, 0.09f, -2.5f));
+        route.SetPosition(1, new Vector3(-6.1f, 0.09f, -3.9f));
+        route.SetPosition(2, new Vector3(-4.25f, 0.09f, -5.0f));
     }
 
     private void BuildFloodNeighborhood(Material concrete, Material roof, Material wall, Material wood)

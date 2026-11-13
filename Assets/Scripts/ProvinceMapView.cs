@@ -18,7 +18,6 @@ public sealed class ProvinceMapView : MonoBehaviour
     private bool[] completedCache;
     private int displayedSelectedPlate = -1;
     private int displayedHoveredPlate = -1;
-    private GameManager.DisasterType displayedDisaster;
     private bool hasDisplayState;
     private int hoveredPlate;
     private int focusedPlate = 6;
@@ -138,19 +137,7 @@ public sealed class ProvinceMapView : MonoBehaviour
 
     private int FindSelectablePlate(int from, int direction)
     {
-        int plate = from;
-        for (int attempt = 0; attempt < ProvinceCount; attempt++)
-        {
-            plate = Mathf.Clamp(plate + direction, 1, ProvinceCount);
-            if (ProvinceManager.Instance == null
-                || GameManager.Instance == null
-                || GameManager.Instance.SelectedDisaster != GameManager.DisasterType.Flood
-                || ProvinceManager.Instance.IsFloodProvince(plate))
-                return plate;
-            if (plate == 1 && direction < 0 || plate == ProvinceCount && direction > 0)
-                break;
-        }
-        return from;
+        return Mathf.Clamp(from + direction, 1, ProvinceCount);
     }
 
     private void ReadPointer()
@@ -184,13 +171,6 @@ public sealed class ProvinceMapView : MonoBehaviour
         {
             if (hoveredPlate > 0)
             {
-                if (ProvinceManager.Instance != null && GameManager.Instance != null
-                    && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
-                    && !ProvinceManager.Instance.IsFloodProvince(hoveredPlate))
-                {
-                    ProvinceHovered?.Invoke(-2);
-                    return;
-                }
                 PrototypeAudio.PlayUiSelect();
                 FocusAndSelect(hoveredPlate);
             }
@@ -239,12 +219,10 @@ public sealed class ProvinceMapView : MonoBehaviour
         if (highlightTexture == null || maskPixels == null)
             return;
 
-        GameManager.DisasterType disaster = GameManager.Instance != null
-            ? GameManager.Instance.SelectedDisaster : GameManager.DisasterType.Earthquake;
-        bool rebuildBase = !hasDisplayState || displayedDisaster != disaster;
+        bool rebuildBase = !hasDisplayState;
         if (rebuildBase)
         {
-            CacheCompletionState(disaster);
+            CacheCompletionState();
             for (int index = 0; index < maskPixels.Length; index++)
             {
                 int plate = maskPixels[index].r;
@@ -252,7 +230,6 @@ public sealed class ProvinceMapView : MonoBehaviour
                     ? new Color32(116, 126, 136, 190)
                     : new Color32(0, 0, 0, 0);
             }
-            displayedDisaster = disaster;
             displayedSelectedPlate = -1;
             displayedHoveredPlate = -1;
             hasDisplayState = true;
@@ -312,12 +289,15 @@ public sealed class ProvinceMapView : MonoBehaviour
                 : new Rect();
     }
 
-    private void CacheCompletionState(GameManager.DisasterType disaster)
+    private void CacheCompletionState()
     {
         completedCache = new bool[ProvinceCount + 1];
         if (ProvinceManager.Instance == null) return;
         for (int plate = 1; plate <= ProvinceCount; plate++)
+        {
+            GameManager.DisasterType disaster = ProvinceManager.Instance.GetPrimaryDisasterForProvince(plate);
             completedCache[plate] = ProvinceManager.Instance.IsScenarioCompleted(plate, disaster);
+        }
     }
 
     private void RedrawProvince(int plate)

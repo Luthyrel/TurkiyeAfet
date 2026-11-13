@@ -578,7 +578,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (floodWater != null)
             floodWater.gameObject.SetActive(true);
         GameManager.Instance?.StartScenario();
-        bootstrap.ShowNotice("Taşkın başladı. Akıntıya girme; evin üst katındaki güvenli alana çık.");
+        bootstrap.ShowNotice("Taşkın başladı. Evin arka-sağ köşesindeki yeşil çizgiyi merdivene kadar izle; basamaklardan üst kata çıkıp yeşil güvenli alanda dur.");
         RefreshHud();
     }
 
@@ -762,8 +762,8 @@ public sealed class PrototypeScenario : MonoBehaviour
     {
         Vector3 offset = position - floodSafeCenter;
         return position.y >= floodSafeCenter.y - 0.2f
-            && Mathf.Abs(offset.x) <= 3.4f
-            && Mathf.Abs(offset.z) <= 3.2f;
+            && Mathf.Abs(offset.x) <= 1.15f
+            && Mathf.Abs(offset.z) <= 1.15f;
     }
     private void EndEarthquake()
     {
@@ -860,14 +860,14 @@ public sealed class PrototypeScenario : MonoBehaviour
         string lastScoreKey = ProvinceManager.ProgressKey(disasterKey + ".LastScore", plateCode);
         string bestScoreKey = ProvinceManager.ProgressKey(disasterKey + ".BestScore", plateCode);
         PlayerPrefs.SetInt(completedKey, 1);
+        PlayerPrefs.SetInt(disasterKey + ".Completed", 1);
         PlayerPrefs.SetInt(lastScoreKey, Score);
         PlayerPrefs.SetInt(bestScoreKey, Mathf.Max(Score, PlayerPrefs.GetInt(bestScoreKey, 0)));
         PlayerPrefs.SetInt("TurkiyeAfet.LastProvince", plateCode);
         PlayerPrefs.SetInt("TurkiyeAfet.LastCompletedProvince", plateCode);
-        if (plateCode == 6)
+        if (!floodScenario && plateCode == 6)
         {
             // Keep the save keys from the first Ankara-only prototype readable.
-            PlayerPrefs.SetInt("TurkiyeAfet.Deprem.Completed", 1);
             PlayerPrefs.SetInt("TurkiyeAfet.Deprem.LastScore", Score);
             PlayerPrefs.SetInt("TurkiyeAfet.Deprem.BestScore", Mathf.Max(Score, PlayerPrefs.GetInt("TurkiyeAfet.Deprem.BestScore", 0)));
         }
@@ -914,14 +914,16 @@ public sealed class PrototypeScenario : MonoBehaviour
             string floodTasks = "";
             if (CurrentPhase == Phase.Preparation)
             {
-                floodTasks = "SEL ÖNCESİ HAZIRLIK\n";
+                floodTasks = "SEL ÖNCESİ HAZIRLIK\nAktif nesneye yaklaş; E veya sol tıkla etkileş.\n";
                 AppendFloodTasks(ref floodTasks, floodPreparationTasks, floodPreparationIndex);
             }
             else if (CurrentPhase == Phase.Flooding)
-                floodTasks = "SEL ANI\n▶ AKTİF HEDEF: Su yükselmeden üst kata çık.";
+                floodTasks = "SEL ANI\n▶ AKTİF HEDEF: Evin arka-sağ köşesindeki yeşil çizgiyi merdivene kadar izle.\nBasamaklardan üst kata çık ve yeşil güvenli alanda dur.";
             else if (CurrentPhase == Phase.Aftershock)
             {
                 floodTasks = floodEvacuated ? "SEL SONRASI\n" : "SEL SONRASI  •  ÖNCE GÜVENLİ ALANA ÇIK\n";
+                if (!floodEvacuated)
+                    floodTasks += "Arka-sağdaki merdivenden çık; üst kattaki yeşil alana geç.\n";
                 AppendFloodTasks(ref floodTasks, floodAfterTasks, floodAfterIndex);
             }
 
@@ -982,8 +984,9 @@ public sealed class PrototypeScenario : MonoBehaviour
             if (task == null)
                 continue;
             if (i == activeIndex)
-                text += "<color=#5ED7C4>▶ AKTİF HEDEF: " + task.ActionName + "</color>\n";
-            text += (task.IsComplete ? "✓ " : "○ ") + task.ActionName;
+                text += "<color=#5ED7C4>▶ " + task.TargetDisplayName + "</color>\n   " + task.ActionName;
+            else
+                text += (task.IsComplete ? "✓ " : "○ ") + task.ActionName;
             if (i < tasks.Count - 1)
                 text += "\n";
         }
