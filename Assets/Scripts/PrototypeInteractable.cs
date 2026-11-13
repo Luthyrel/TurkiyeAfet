@@ -29,6 +29,7 @@ public sealed class PrototypeInteractable : MonoBehaviour
     [SerializeField] private Transform exitDoorPanel;
     [SerializeField] private Transform floodSwitchLever;
     [SerializeField] private Renderer floodSwitchIndicator;
+    [SerializeField] private Transform floodPhoneHandset;
 
     private Renderer[] renderers;
     private Color[] originalColors;
@@ -39,6 +40,8 @@ public sealed class PrototypeInteractable : MonoBehaviour
     private Vector3 heldGripAxis = Vector3.right;
     private Vector3 heldGripDirection = Vector3.up;
     private Vector3 heldGripFaceAxis = Vector3.back;
+    private Vector3 floodPhoneRestPosition;
+    private Quaternion floodPhoneRestRotation;
 
     public PrototypeAction Action => action;
     public string ActionName => actionName;
@@ -83,6 +86,29 @@ public sealed class PrototypeInteractable : MonoBehaviour
     {
         floodSwitchLever = lever;
         floodSwitchIndicator = indicator;
+    }
+
+    public void ConfigureFloodPhoneVisual(Transform handset)
+    {
+        floodPhoneHandset = handset;
+        if (floodPhoneHandset != null)
+        {
+            floodPhoneRestPosition = floodPhoneHandset.localPosition;
+            floodPhoneRestRotation = floodPhoneHandset.localRotation;
+        }
+    }
+
+    public void SetFloodPhoneRaised(bool raised)
+    {
+        if (floodPhoneHandset == null)
+            return;
+
+        floodPhoneHandset.localPosition = raised
+            ? floodPhoneRestPosition + new Vector3(0f, 0.13f, 0.04f)
+            : floodPhoneRestPosition;
+        floodPhoneHandset.localRotation = raised
+            ? floodPhoneRestRotation * Quaternion.Euler(0f, 0f, -22f)
+            : floodPhoneRestRotation;
     }
 
     public void OpenExitDoor()
@@ -253,8 +279,12 @@ public sealed class PrototypeInteractable : MonoBehaviour
         }
 
         CacheRenderers();
-        if (action != PrototypeAction.OpenExitDoor && action != PrototypeAction.PrepareDisasterBag
-            && action != PrototypeAction.CutFloodPower)
+        bool floodAction = action == PrototypeAction.CutFloodPower
+            || action == PrototypeAction.RaiseFloodValuables
+            || action == PrototypeAction.PlaceFloodBarrier
+            || action == PrototypeAction.CallForFloodHelp
+            || action == PrototypeAction.WaitForFloodAllClear;
+        if (action != PrototypeAction.OpenExitDoor && action != PrototypeAction.PrepareDisasterBag && !floodAction)
         {
             for (int i = 0; i < renderers.Length; i++)
             {

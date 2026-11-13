@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 public sealed class PrototypeScenario : MonoBehaviour
 {
     public enum Phase { Preparation, Shaking, Flooding, Blackout, Trapped, Aftershock, Completed }
+    private enum FloodDialogueMode { None, EmergencyCall, OfficialBulletin }
 
     private const float QuakeDuration = 10f;
     private const float RequiredHoldDuration = 5f;
@@ -16,6 +17,8 @@ public sealed class PrototypeScenario : MonoBehaviour
     private const float PreparationCountdownDuration = 5f;
     private const int TrappedQuestionPoints = 50;
     private const float FloodRiseDuration = 18f;
+    private const float FloodRecessionDelay = 8f;
+    private const float FloodRecessionDuration = 8f;
 
     private static readonly string[] TrappedQuestions =
     {
@@ -82,6 +85,11 @@ public sealed class PrototypeScenario : MonoBehaviour
     private Vector3 floodSafeCenter = new Vector3(-7f, 2.8f, -2f);
     private int floodPreparationIndex;
     private int floodAfterIndex;
+    private FloodDialogueMode floodDialogueMode;
+    private int floodDialogueStep;
+    private PrototypeInteractable floodDialogueTarget;
+    private bool floodAllClearAnnounced;
+    private bool floodAllClearNoticeShown;
 
     public Phase CurrentPhase { get; private set; } = Phase.Preparation;
     public bool IsShaking => CurrentPhase == Phase.Shaking;
@@ -369,6 +377,24 @@ public sealed class PrototypeScenario : MonoBehaviour
             return;
         }
 
+        if (CurrentPhase == Phase.Aftershock && target.Action == PrototypeAction.CallForFloodHelp)
+        {
+            BeginFloodEmergencyCall(target);
+            return;
+        }
+
+        if (CurrentPhase == Phase.Aftershock && target.Action == PrototypeAction.WaitForFloodAllClear)
+        {
+            if (!floodAllClearAnnounced)
+            {
+                bootstrap.ShowNotice("Resmî duyuru bekleniyor. Su seviyesi hâlâ yüksek; üst katta kal ve ekrandaki bildirimi takip et.");
+                return;
+            }
+
+            BeginFloodOfficialBulletin(target);
+            return;
+        }
+
         target.CompleteAction();
         if (CurrentPhase == Phase.Preparation)
         {
@@ -386,6 +412,147 @@ public sealed class PrototypeScenario : MonoBehaviour
             if (floodAfterIndex >= floodAfterTasks.Count)
                 FinishScenario();
         }
+        RefreshHud();
+    }
+
+    private void BeginFloodEmergencyCall(PrototypeInteractable target)
+    {
+        if (floodDialogueMode != FloodDialogueMode.None)
+            return;
+
+        floodDialogueTarget = target;
+        floodDialogueMode = FloodDialogueMode.EmergencyCall;
+        floodDialogueStep = 0;
+        target.SetFloodPhoneRaised(true);
+        bootstrap.SetPlayerControls(false);
+        PrototypeAudio.PlayPhoneRing();
+        bootstrap.ShowNotice("Ahizeyi kaldırdın. 112 Acil Çağrı Merkezi aranıyor...");
+        StartCoroutine(ConnectFloodEmergencyCall());
+    }
+
+    private IEnumerator ConnectFloodEmergencyCall()
+    {
+        yield return new WaitForSecondsRealtime(1.25f);
+        PrototypeAudio.PlayPhoneConnect();
+        ShowFloodCallStep(string.Empty);
+    }
+
+    private void ShowFloodCallStep(string feedback)
+    {
+        if (floodDialogueStep == 0)
+        {
+            string provinceName = ProvinceManager.Instance != null
+                && ProvinceManager.Instance.SelectedProvince != null
+                ? ProvinceManager.Instance.SelectedProvince.name : "seçilen il";
+            bootstrap.ShowFloodDialogue("112 ACİL ÇAĞRI MERKEZİ",
+                "Operatör: Acil durumunuzu ve bulunduğunuz yeri anlatın.\n\n" +
+                "İl: " + provinceName + ". Açık adresinizi mahalle, sokak ve bina numarasıyla tarif edin.",
+                new[]
+                {
+                    "Sel nedeniyle üst katta mahsur kaldığımı ve açık adresimi bildiriyorum.",
+                    "Adres vermeden telefonu kapatıyorum.",
+                    "Adres aramak için su basan sokağa çıkıyorum."
+                }, feedback);
+        }
+        else if (floodDialogueStep == 1)
+        {
+            bootstrap.ShowFloodDialogue("112 ACİL ÇAĞRI MERKEZİ",
+                "Operatör: Binada kaç kişi var? Yaralı, çocuk, yaşlı veya özel yardıma ihtiyacı olan biri var mı?",
+                new[]
+                {
+                    "Kişi sayısını ve varsa yaralıları/özel ihtiyaçları net biçimde bildiriyorum.",
+                    "Bu bilgileri vermeden yalnızca yardım istiyorum.",
+                    "Kontrol etmek için alt kata ve suya iniyorum."
+                }, feedback);
+        }
+        else
+        {
+            bootstrap.ShowFloodDialogue("112 ACİL ÇAĞRI MERKEZİ",
+                "Operatör: Üst katta ve güvenli bir yerde kalın. Su basmış yola ya da akıntıya girmeyin; ekiplerin yönlendirmesini bekleyin.",
+                new[]
+                {
+                    "Anladım. Üst katta kalıp suya girmeyeceğim; talimatları bekliyorum.",
+                    "Eşyaları almak için aşağı iniyorum.",
+                    "Yardım gelmeden binadan çıkmayı deniyorum."
+                }, feedback);
+        }
+    }
+
+    private void BeginFloodOfficialBulletin(PrototypeInteractable target)
+    {
+        floodDialogueTarget = target;
+        floodDialogueMode = FloodDialogueMode.OfficialBulletin;
+        bootstrap.SetPlayerControls(false);
+        string provinceName = ProvinceManager.Instance != null
+            && ProvinceManager.Instance.SelectedProvince != null
+            ? ProvinceManager.Instance.SelectedProvince.name : "seçilen il";
+        bootstrap.ShowFloodDialogue("RESMÎ TAŞKIN BİLGİLENDİRMESİ",
+            provinceName + " için su seviyesinin düştüğü bildiriliyor. Bu duyuru bölgedeki yolların ve binaların güvenli olduğu anlamına gelmez. Dere yatağına, su basmış yola ve hasarlı binaya yaklaşmayın; yetkililerin tahliye ve dönüş talimatlarını bekleyin.",
+            new[]
+            {
+                "Duyuruyu aldım. Güvenli alanda kalıp yetkililerin yönlendirmesini bekleyeceğim.",
+                "Suyu kontrol etmek için aşağıya ve sokağa ineceğim."
+            }, string.Empty);
+    }
+
+    public void SelectFloodDialogueChoice(int choiceIndex)
+    {
+        if (floodDialogueMode == FloodDialogueMode.None || floodDialogueTarget == null)
+            return;
+
+        int correctChoice = 0;
+        int optionCount = floodDialogueMode == FloodDialogueMode.OfficialBulletin ? 2 : 3;
+        if (choiceIndex < 0 || choiceIndex >= optionCount)
+            return;
+
+        if (choiceIndex != correctChoice)
+        {
+            PrototypeAudio.PlayAnswerWrong();
+            string feedback = floodDialogueMode == FloodDialogueMode.EmergencyCall
+                ? "Operatör: Güvenli alandan ayrılmayın. Konumunuzu ve içeridekilerin durumunu bildirin."
+                : "Duyuru: Su çekilse bile yollar ve yapılar tehlikeli olabilir. Güvenli alanda kalın.";
+            if (floodDialogueMode == FloodDialogueMode.EmergencyCall)
+                ShowFloodCallStep(feedback);
+            else
+                bootstrap.ShowFloodDialogue("RESMÎ TAŞKIN BİLGİLENDİRMESİ",
+                    "Su seviyesi düştü; ancak dere yatağına, su basmış yola veya hasarlı binaya yaklaşmayın. Yetkililerin talimatlarını bekleyin.",
+                    new[]
+                    {
+                        "Duyuruyu aldım. Güvenli alanda kalıp yetkililerin yönlendirmesini bekleyeceğim.",
+                        "Suyu kontrol etmek için aşağıya ve sokağa ineceğim."
+                    }, feedback);
+            return;
+        }
+
+        PrototypeAudio.PlayAnswerCorrect();
+        if (floodDialogueMode == FloodDialogueMode.EmergencyCall && floodDialogueStep < 2)
+        {
+            floodDialogueStep++;
+            ShowFloodCallStep(string.Empty);
+            return;
+        }
+
+        PrototypeInteractable completedTarget = floodDialogueTarget;
+        if (floodDialogueMode == FloodDialogueMode.EmergencyCall)
+            completedTarget.SetFloodPhoneRaised(false);
+        floodDialogueMode = FloodDialogueMode.None;
+        floodDialogueTarget = null;
+        bootstrap.HideFloodDialogue();
+        bootstrap.SetPlayerControls(true);
+        CompleteFloodAfterTask(completedTarget,
+            completedTarget.Action == PrototypeAction.CallForFloodHelp
+                ? "112'ye konum ve kişi bilgilerini ilettin. Talimatları bekle. +75 puan."
+                : "Resmî duyuruyu okudun; güvenli alanda kalma talimatını onayladın. +75 puan.");
+    }
+
+    private void CompleteFloodAfterTask(PrototypeInteractable target, string notice)
+    {
+        target.CompleteAction();
+        Score += 75;
+        floodAfterIndex++;
+        bootstrap.ShowNotice(notice);
+        if (floodAfterIndex >= floodAfterTasks.Count)
+            FinishScenario();
         RefreshHud();
     }
 
@@ -729,11 +896,29 @@ public sealed class PrototypeScenario : MonoBehaviour
         floodTimer += Time.deltaTime;
         if (floodWater != null)
         {
-            float t = Mathf.Clamp01(floodTimer / FloodRiseDuration);
-            float y = Mathf.Lerp(floodWaterStartY, floodWaterEndY, t);
+            float plateauEnd = FloodRiseDuration + FloodRecessionDelay;
+            float y;
+            if (floodTimer <= FloodRiseDuration)
+                y = Mathf.Lerp(floodWaterStartY, floodWaterEndY, Mathf.Clamp01(floodTimer / FloodRiseDuration));
+            else if (floodTimer <= plateauEnd)
+                y = floodWaterEndY;
+            else
+                y = Mathf.Lerp(floodWaterEndY, floodWaterStartY,
+                    Mathf.Clamp01((floodTimer - plateauEnd) / FloodRecessionDuration));
             Vector3 position = floodWater.position;
             position.y = y;
             floodWater.position = position;
+        }
+
+        if (!floodAllClearAnnounced
+            && floodTimer >= FloodRiseDuration + FloodRecessionDelay + FloodRecessionDuration)
+        {
+            floodAllClearAnnounced = true;
+            if (!floodAllClearNoticeShown)
+            {
+                floodAllClearNoticeShown = true;
+                bootstrap.ShowNotice("Resmî duyuru: Su seviyesi düşüyor. Bu, yolların ve binaların güvenli olduğu anlamına gelmez; ekrandaki talimatı oku.");
+            }
         }
 
         if (!floodEvacuated && player != null && IsInFloodSafeZone(player.transform.position))
@@ -984,7 +1169,12 @@ public sealed class PrototypeScenario : MonoBehaviour
             if (task == null)
                 continue;
             if (i == activeIndex)
-                text += "<color=#5ED7C4>▶ " + task.TargetDisplayName + "</color>\n   " + task.ActionName;
+            {
+                string activeAction = task.Action == PrototypeAction.WaitForFloodAllClear && !floodAllClearAnnounced
+                    ? "Su seviyesi düşene kadar bekle"
+                    : task.ActionName;
+                text += "<color=#5ED7C4>▶ " + task.TargetDisplayName + "</color>\n   " + activeAction;
+            }
             else
                 text += (task.IsComplete ? "✓ " : "○ ") + task.ActionName;
             if (i < tasks.Count - 1)

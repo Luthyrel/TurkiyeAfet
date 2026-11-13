@@ -23,6 +23,10 @@ public sealed class PrototypeAudio : MonoBehaviour
     private AudioClip answerCorrect;
     private AudioClip answerWrong;
     private AudioClip taskComplete;
+    private AudioClip phoneRing;
+    private AudioClip phoneConnect;
+    private AudioClip floodCallRing;
+    private AudioClip floodCallConnect;
 
     private void Awake()
     {
@@ -61,6 +65,8 @@ public sealed class PrototypeAudio : MonoBehaviour
         answerCorrect = Load("AnswerCorrect");
         answerWrong = Load("AnswerWrong");
         taskComplete = Load("TaskComplete");
+        floodCallRing = CreatePhoneRingClip();
+        floodCallConnect = CreatePhoneConnectClip();
 
     }
 
@@ -73,6 +79,46 @@ public sealed class PrototypeAudio : MonoBehaviour
     private AudioClip Load(string clipName)
     {
         return Resources.Load<AudioClip>("Audio/Mixkit/" + clipName);
+    }
+
+    private AudioClip CreatePhoneRingClip()
+    {
+        const int sampleRate = 44100;
+        const float duration = 1.25f;
+        int sampleCount = Mathf.CeilToInt(sampleRate * duration);
+        float[] samples = new float[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float time = i / (float)sampleRate;
+            float pulse = time % 0.58f;
+            if (pulse < 0.22f)
+            {
+                float edge = Mathf.Min(pulse / 0.018f, (0.22f - pulse) / 0.025f, 1f);
+                float tone = Mathf.Sin(2f * Mathf.PI * 440f * time) * 0.55f
+                    + Mathf.Sin(2f * Mathf.PI * 480f * time) * 0.45f;
+                samples[i] = tone * Mathf.Clamp01(edge) * 0.24f;
+            }
+        }
+        AudioClip clip = AudioClip.Create("Simüle Telefon Zili", sampleCount, 1, sampleRate, false);
+        clip.SetData(samples, 0);
+        return clip;
+    }
+
+    private AudioClip CreatePhoneConnectClip()
+    {
+        const int sampleRate = 44100;
+        const float duration = 0.24f;
+        int sampleCount = Mathf.CeilToInt(sampleRate * duration);
+        float[] samples = new float[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float time = i / (float)sampleRate;
+            float edge = Mathf.Min(time / 0.018f, (duration - time) / 0.04f, 1f);
+            samples[i] = Mathf.Sin(2f * Mathf.PI * 425f * time) * Mathf.Clamp01(edge) * 0.18f;
+        }
+        AudioClip clip = AudioClip.Create("Simüle Telefon Bağlantı Sesi", sampleCount, 1, sampleRate, false);
+        clip.SetData(samples, 0);
+        return clip;
     }
 
     private void PlayOneShot(AudioClip clip, float volume = 1f, float pitchMin = 0.96f, float pitchMax = 1.04f)
@@ -96,6 +142,8 @@ public sealed class PrototypeAudio : MonoBehaviour
     public static void PlayTaskComplete() => Instance?.PlayOneShot(Instance.taskComplete, 0.30f);
     public static void PlayAnswerCorrect() => Instance?.PlayOneShot(Instance.answerCorrect, 0.62f);
     public static void PlayAnswerWrong() => Instance?.PlayOneShot(Instance.answerWrong, 0.55f);
+    public static void PlayPhoneRing() => Instance?.PlayOneShot(Instance.floodCallRing, 0.65f, 1f, 1f);
+    public static void PlayPhoneConnect() => Instance?.PlayOneShot(Instance.floodCallConnect, 0.45f, 1f, 1f);
 
     public static void PlayFurnitureSound(PrototypeAction action)
     {

@@ -251,9 +251,40 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         CreateBox("Sel Evi Kırma Çatı", new Vector3(-7f, 5.15f, -2f), new Vector3(8.8f, 0.35f, 8.8f), roof);
         CreateBox("Sel Evi Üst Kat Pencere Altlığı", new Vector3(-7f, 3.55f, -5.84f), new Vector3(2.1f, 0.15f, 0.35f), wood);
         CreateBox("Üst Kat Güvenli Alan İşareti", new Vector3(-7f, 2.91f, -2f), new Vector3(2.4f, 0.035f, 2.4f), safeMat);
+        BuildFloodEntryDoor(wood, concrete);
         BuildFloodStairs(wood, safeMat);
         CreateBox("Ev Ön Sundurma", new Vector3(-7f, 0.13f, 2.65f), new Vector3(4.5f, 0.22f, 1.45f), concrete);
         CreateBox("Ev Sağanak Oluk", new Vector3(-7f, 5.0f, 2.55f), new Vector3(8.2f, 0.12f, 0.16f), wood);
+    }
+
+    private void BuildFloodEntryDoor(Material wood, Material trim)
+    {
+        // The front wall has a 2.2 m opening. Add a recognizable frame and an open door leaf
+        // so the sandbag objective has an actual threshold to protect.
+        CreateBox("Giriş Kapısı Sol Sövesi", new Vector3(-8.03f, 1.05f, 1.91f),
+            new Vector3(0.14f, 2.1f, 0.28f), trim);
+        CreateBox("Giriş Kapısı Sağ Sövesi", new Vector3(-5.97f, 1.05f, 1.91f),
+            new Vector3(0.14f, 2.1f, 0.28f), trim);
+        CreateBox("Giriş Kapısı Üst Sövesi", new Vector3(-7f, 2.10f, 1.91f),
+            new Vector3(2.2f, 0.14f, 0.28f), trim);
+
+        GameObject hinge = new GameObject("Giriş Kapısı Menteşesi");
+        hinge.transform.position = new Vector3(-8.0f, 0.04f, 1.94f);
+        hinge.transform.rotation = Quaternion.Euler(0f, -68f, 0f);
+        GameObject leaf = CreateChildBox(hinge.transform, "Açık Ahşap Giriş Kapısı",
+            new Vector3(0.94f, 1.0f, 0f), new Vector3(1.88f, 2.0f, 0.12f), wood);
+        Collider leafCollider = leaf.GetComponent<Collider>();
+        if (leafCollider != null) leafCollider.enabled = false;
+        GameObject inset = CreateChildBox(leaf.transform, "Kapı İç Paneli",
+            new Vector3(0f, 0f, -0.072f), new Vector3(1.46f, 1.52f, 0.025f),
+            MakeMaterial("Kapı İç Ahşap Panel", new Color32(111, 73, 48, 255)));
+        Collider insetCollider = inset.GetComponent<Collider>();
+        if (insetCollider != null) insetCollider.enabled = false;
+        GameObject knob = CreateChildBox(leaf.transform, "Giriş Kapısı Pirinç Kolu",
+            new Vector3(0.70f, 0.96f, -0.092f), new Vector3(0.07f, 0.07f, 0.05f),
+            MakeMaterial("Kapı Kolu Pirinç", new Color32(188, 151, 81, 255)));
+        Collider knobCollider = knob.GetComponent<Collider>();
+        if (knobCollider != null) knobCollider.enabled = false;
     }
 
     private void BuildFloodStairs(Material wood, Material safeMat)
@@ -393,34 +424,44 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         breakerTask.ConfigureFloodSwitchVisual(togglePivot.transform, breakerIndicator.GetComponent<Renderer>());
         scenario.AddFloodPreparationTask(breakerTask);
 
+        // Upper-floor storage shelf: valuables are moved to a dry raised surface beside the
+        // refuge area, rather than being dropped into the middle of the safe-zone marker.
+        Material shelfMat = MakeMaterial("Üst Kat Rafı", new Color32(118, 91, 64, 255));
+        CreateBox("Değerli Eşyalar İçin Yüksek Raf", new Vector3(-9.45f, 3.04f, -5.18f),
+            new Vector3(1.45f, 0.12f, 0.72f), shelfMat);
+        CreateBox("Yüksek Raf Sol Destek", new Vector3(-10.03f, 2.88f, -5.18f),
+            new Vector3(0.10f, 0.28f, 0.64f), shelfMat);
+        CreateBox("Yüksek Raf Sağ Destek", new Vector3(-8.87f, 2.88f, -5.18f),
+            new Vector3(0.10f, 0.28f, 0.64f), shelfMat);
+
         GameObject documents = CreateBox("Evrak ve İlaç Kutusu", new Vector3(-8.8f, 0.52f, -1.1f),
             new Vector3(0.8f, 0.48f, 0.64f), wood);
         Material paper = MakeMaterial("Açık Renk Evrak", new Color32(229, 220, 190, 255));
         Material medicalPack = MakeMaterial("İlaç Paketi Beyaz", new Color32(236, 236, 222, 255));
         Material medicalMark = MakeMaterial("İlaç Paketi Kırmızı İşaret", new Color32(190, 58, 51, 255));
         GameObject papers = CreateChildBox(documents.transform, "Görünen Evrak Dosyası",
-            new Vector3(-0.12f, 0.61f, 0.04f), new Vector3(0.46f, 0.08f, 0.62f), paper);
+            new Vector3(-0.12f, 0.255f, 0.04f), new Vector3(0.46f, 0.035f, 0.62f), paper);
         Collider papersCollider = papers.GetComponent<Collider>();
         if (papersCollider != null) papersCollider.enabled = false;
         GameObject medicine = CreateChildBox(documents.transform, "İlk Yardım İlaç Paketi",
-            new Vector3(0.20f, 0.62f, -0.20f), new Vector3(0.29f, 0.22f, 0.31f), medicalPack);
+            new Vector3(0.20f, 0.34f, -0.20f), new Vector3(0.29f, 0.16f, 0.31f), medicalPack);
         Collider medicineCollider = medicine.GetComponent<Collider>();
         if (medicineCollider != null) medicineCollider.enabled = false;
         GameObject crossVertical = CreateChildBox(medicine.transform, "İlaç Paketi Artı İşareti Dikey",
-            new Vector3(0f, 0.58f, 0f), new Vector3(0.16f, 0.06f, 0.38f), medicalMark);
+            new Vector3(0f, 0.55f, 0f), new Vector3(0.075f, 0.025f, 0.22f), medicalMark);
         Collider crossVerticalCollider = crossVertical.GetComponent<Collider>();
         if (crossVerticalCollider != null) crossVerticalCollider.enabled = false;
         GameObject crossHorizontal = CreateChildBox(medicine.transform, "İlaç Paketi Artı İşareti Yatay",
-            new Vector3(0f, 0.59f, 0f), new Vector3(0.42f, 0.06f, 0.14f), medicalMark);
+            new Vector3(0f, 0.55f, 0f), new Vector3(0.22f, 0.025f, 0.075f), medicalMark);
         Collider crossHorizontalCollider = crossHorizontal.GetComponent<Collider>();
         if (crossHorizontalCollider != null) crossHorizontalCollider.enabled = false;
         PrototypeInteractable documentsTask = documents.AddComponent<PrototypeInteractable>();
         documentsTask.Configure(PrototypeAction.RaiseFloodValuables, "Önemli evrak ve ilaçları üst kata kaldır");
-        documentsTask.ConfigureMove(documents.transform, new Vector3(-7f, 3.08f, -2.7f));
+        documentsTask.ConfigureMove(documents.transform, new Vector3(-9.45f, 3.30f, -5.18f));
         scenario.AddFloodPreparationTask(documentsTask);
 
         GameObject barrier = new GameObject("Kapı Önü Kum Torbası Bariyeri");
-        barrier.transform.position = new Vector3(-7f, 0.28f, 1.45f);
+        barrier.transform.position = new Vector3(-9.25f, 0.28f, 0.80f);
         BoxCollider barrierCollider = barrier.AddComponent<BoxCollider>();
         barrierCollider.size = new Vector3(1.9f, 0.56f, 0.65f);
         Material individualSandbag = sandbag != null
@@ -432,20 +473,77 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         AddSandbag(barrier.transform, new Vector3(0.31f, 0.40f, 0f), individualSandbag);
         PrototypeInteractable barrierTask = barrier.AddComponent<PrototypeInteractable>();
         barrierTask.Configure(PrototypeAction.PlaceFloodBarrier, "Kapı önüne kum torbası bariyerini yerleştir");
-        barrierTask.ConfigureMove(barrier.transform, new Vector3(-7f, 0.32f, 1.88f));
+        barrierTask.ConfigureMove(barrier.transform, new Vector3(-7f, 0.24f, 2.34f));
         scenario.AddFloodPreparationTask(barrierTask);
 
         floodSafePosition = new Vector3(-7f, 2.88f, -2f);
-        CreateBox("Acil Durum Haberleşme Telsizi", new Vector3(-5.2f, 3.16f, -1.2f),
-            new Vector3(0.34f, 0.40f, 0.28f), MakeMaterial("Telsiz Sel", new Color32(45, 58, 58, 255)));
-        GameObject report = CreateBox("Acil Durum Bilgilendirme Noktası", new Vector3(-8.8f, 3.16f, -4.1f),
-            new Vector3(0.32f, 0.52f, 0.08f), safeMat);
+        // A small emergency table gives the phone a visible, believable resting place.
+        Material tableMat = MakeMaterial("Acil Telefon Sehpası", new Color32(93, 71, 53, 255));
+        CreateBox("Acil Telefon Sehpası Üstü", new Vector3(-8.65f, 3.05f, -4.25f),
+            new Vector3(1.25f, 0.10f, 0.72f), tableMat);
+        for (int xSide = -1; xSide <= 1; xSide += 2)
+        for (int zSide = -1; zSide <= 1; zSide += 2)
+            CreateBox("Acil Telefon Sehpası Ayağı", new Vector3(-8.65f + xSide * 0.49f, 2.98f, -4.25f + zSide * 0.25f),
+                new Vector3(0.08f, 0.22f, 0.08f), tableMat);
+
+        GameObject report = new GameObject("Masa Üstü Acil Telefon");
+        report.transform.position = new Vector3(-8.65f, 3.14f, -4.25f);
+        BoxCollider phoneCollider = report.AddComponent<BoxCollider>();
+        phoneCollider.size = new Vector3(0.42f, 0.26f, 0.38f);
+        Material phoneMat = MakeMaterial("Acil Telefon Gövdesi", new Color32(44, 52, 56, 255));
+        Material phoneAccent = MakeMaterial("Acil Telefon Tuşları", new Color32(212, 214, 202, 255));
+        Material phoneRed = MakeMaterial("Acil Telefon Acil Tuşu", new Color32(188, 56, 48, 255));
+        GameObject phoneBase = CreateChildBox(report.transform, "Masa Telefonu Gövdesi",
+            new Vector3(0f, 0f, 0f), new Vector3(0.38f, 0.09f, 0.32f), phoneMat);
+        Collider phoneBaseCollider = phoneBase.GetComponent<Collider>();
+        if (phoneBaseCollider != null) phoneBaseCollider.enabled = false;
+        GameObject phoneKeys = CreateChildBox(report.transform, "Telefon Tuş Takımı",
+            new Vector3(0.04f, 0.052f, -0.035f), new Vector3(0.20f, 0.025f, 0.13f), phoneAccent);
+        Collider phoneKeysCollider = phoneKeys.GetComponent<Collider>();
+        if (phoneKeysCollider != null) phoneKeysCollider.enabled = false;
+        GameObject emergencyKey = CreateChildBox(report.transform, "Telefon Acil Çağrı Tuşu",
+            new Vector3(-0.105f, 0.055f, 0.075f), new Vector3(0.07f, 0.025f, 0.06f), phoneRed);
+        Collider emergencyKeyCollider = emergencyKey.GetComponent<Collider>();
+        if (emergencyKeyCollider != null) emergencyKeyCollider.enabled = false;
+        GameObject handsetPivot = new GameObject("Telefon Ahizesi Menteşesi");
+        handsetPivot.transform.SetParent(report.transform, false);
+        handsetPivot.transform.localPosition = new Vector3(-0.01f, 0.11f, 0.10f);
+        GameObject handset = CreateChildBox(handsetPivot.transform, "Telefon Ahizesi",
+            Vector3.zero, new Vector3(0.31f, 0.07f, 0.07f), phoneMat);
+        Collider handsetCollider = handset.GetComponent<Collider>();
+        if (handsetCollider != null) handsetCollider.enabled = false;
+        GameObject handsetEndLeft = CreateChildBox(handsetPivot.transform, "Ahize Sol Ucu",
+            new Vector3(-0.15f, -0.015f, 0f), new Vector3(0.055f, 0.10f, 0.085f), phoneMat);
+        Collider handsetLeftCollider = handsetEndLeft.GetComponent<Collider>();
+        if (handsetLeftCollider != null) handsetLeftCollider.enabled = false;
+        GameObject handsetEndRight = CreateChildBox(handsetPivot.transform, "Ahize Sağ Ucu",
+            new Vector3(0.15f, -0.015f, 0f), new Vector3(0.055f, 0.10f, 0.085f), phoneMat);
+        Collider handsetRightCollider = handsetEndRight.GetComponent<Collider>();
+        if (handsetRightCollider != null) handsetRightCollider.enabled = false;
         PrototypeInteractable reportTask = report.AddComponent<PrototypeInteractable>();
-        reportTask.Configure(PrototypeAction.CallForFloodHelp, "Güvenli alandan 112'ye konum ve durum bildir");
+        reportTask.Configure(PrototypeAction.CallForFloodHelp, "Telefonu al ve 112'ye konumunu bildir");
+        reportTask.ConfigureFloodPhoneVisual(handsetPivot.transform);
         scenario.AddFloodAfterTask(reportTask);
 
-        GameObject allClear = CreateBox("Resmî Uyarı Ekranı", new Vector3(-5.15f, 3.35f, -4.15f),
-            new Vector3(0.72f, 0.48f, 0.08f), MakeMaterial("Uyarı Ekranı", new Color32(40, 107, 94, 255)));
+        // Fixed to the rear wall over a narrow console; the screen is no longer suspended in air.
+        Material consoleMat = MakeMaterial("Resmî Bilgi Konsolu", new Color32(57, 67, 69, 255));
+        CreateBox("Resmî Bilgi Konsolu Rafı", new Vector3(-5.20f, 3.02f, -5.40f),
+            new Vector3(1.35f, 0.12f, 0.55f), tableMat);
+        GameObject allClear = CreateBox("Duvara Sabit Resmî Bilgi Ekranı", new Vector3(-5.20f, 3.55f, -5.72f),
+            new Vector3(1.12f, 0.74f, 0.14f), consoleMat);
+        GameObject screen = CreateBox("Resmî Bilgi Ekranı Görüntüsü", new Vector3(-5.20f, 3.57f, -5.625f),
+            new Vector3(0.94f, 0.54f, 0.035f), MakeMaterial("Resmî Bilgi Ekranı Yeşil", new Color32(45, 111, 96, 255)));
+        Collider screenCollider = screen.GetComponent<Collider>();
+        if (screenCollider != null) screenCollider.enabled = false;
+        for (int line = 0; line < 3; line++)
+        {
+            GameObject noticeLine = CreateBox("Duyuru Ekranı Bilgi Satırı " + (line + 1),
+                new Vector3(-5.20f, 3.72f - line * 0.15f, -5.598f),
+                new Vector3(0.64f - line * 0.09f, 0.025f, 0.012f),
+                MakeMaterial("Ekran Açık Yazı", new Color32(202, 227, 205, 255)));
+            Collider lineCollider = noticeLine.GetComponent<Collider>();
+            if (lineCollider != null) lineCollider.enabled = false;
+        }
         PrototypeInteractable allClearTask = allClear.AddComponent<PrototypeInteractable>();
         allClearTask.Configure(PrototypeAction.WaitForFloodAllClear, "Resmî duyuruları izle; su çekilmeden geri dönme");
         scenario.AddFloodAfterTask(allClearTask);
@@ -1047,6 +1145,18 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     {
         if (ui != null)
             ui.SetNotice(text);
+    }
+
+    public void ShowFloodDialogue(string title, string body, string[] options, string feedback)
+    {
+        if (ui != null)
+            ui.ShowFloodDialogue(title, body, options, feedback);
+    }
+
+    public void HideFloodDialogue()
+    {
+        if (ui != null)
+            ui.HideFloodDialogue();
     }
 
     public void ShowBlackout()

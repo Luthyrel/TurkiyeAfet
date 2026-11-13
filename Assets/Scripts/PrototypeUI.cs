@@ -35,11 +35,16 @@ public sealed class PrototypeUI : MonoBehaviour
     private RectTransform targetGuideRect;
     private Text targetGuideText;
     private GameObject trappedOverlay;
+    private GameObject floodDialogueOverlay;
     private Image trappedOverlayImage;
     private Text trappedTitle;
     private Text trappedQuestion;
     private Text trappedFeedback;
+    private Text floodDialogueTitle;
+    private Text floodDialogueBody;
+    private Text floodDialogueFeedback;
     private Button[] trappedChoiceButtons;
+    private Button[] floodDialogueButtons;
     private Button provinceContinueButton;
     private Button continueButton;
     private ProvinceMapView provinceMapView;
@@ -84,6 +89,17 @@ public sealed class PrototypeUI : MonoBehaviour
         Keyboard keyboard = Keyboard.current;
         if (keyboard == null)
             return;
+
+        if (floodDialogueOverlay != null && floodDialogueOverlay.activeSelf)
+        {
+            if (keyboard.digit1Key.wasPressedThisFrame || keyboard.numpad1Key.wasPressedThisFrame)
+                owner.Scenario?.SelectFloodDialogueChoice(0);
+            else if (keyboard.digit2Key.wasPressedThisFrame || keyboard.numpad2Key.wasPressedThisFrame)
+                owner.Scenario?.SelectFloodDialogueChoice(1);
+            else if (keyboard.digit3Key.wasPressedThisFrame || keyboard.numpad3Key.wasPressedThisFrame)
+                owner.Scenario?.SelectFloodDialogueChoice(2);
+            return;
+        }
 
         if (provincePage.activeSelf && keyboard.escapeKey.wasPressedThisFrame)
         {
@@ -255,7 +271,66 @@ public sealed class PrototypeUI : MonoBehaviour
         targetGuideText = AddText(targetGuideRect, "Hedef Adı", "", Vector2.zero, Vector2.one, 16,
             new Color32(235, 248, 244, 255), TextAnchor.MiddleCenter);
         targetGuideRect.gameObject.SetActive(false);
+        BuildFloodDialogueOverlay();
         BuildTrappedOverlay();
+    }
+
+    private void BuildFloodDialogueOverlay()
+    {
+        RectTransform overlay = MakeRect(hudPage.transform, "112 ve Resmî Duyuru Diyaloğu", Vector2.zero, Vector2.one);
+        floodDialogueOverlay = overlay.gameObject;
+        AddImage(floodDialogueOverlay, new Color32(5, 12, 20, 205));
+
+        RectTransform card = MakeRect(overlay, "Diyalog Kartı", new Vector2(0.18f, 0.17f), new Vector2(0.82f, 0.83f));
+        AddImage(card.gameObject, new Color32(18, 34, 48, 250));
+        floodDialogueTitle = AddText(card, "Diyalog Başlığı", "112 ACİL ÇAĞRI MERKEZİ",
+            new Vector2(0.07f, 0.84f), new Vector2(0.93f, 0.96f), 28,
+            new Color32(94, 215, 196, 255), TextAnchor.MiddleCenter);
+        floodDialogueBody = AddText(card, "Operatör Duyurusu", "",
+            new Vector2(0.09f, 0.62f), new Vector2(0.91f, 0.83f), 22,
+            Color.white, TextAnchor.MiddleCenter);
+        floodDialogueFeedback = AddText(card, "Diyalog Geri Bildirimi", "",
+            new Vector2(0.09f, 0.54f), new Vector2(0.91f, 0.62f), 17,
+            new Color32(255, 206, 123, 255), TextAnchor.MiddleCenter);
+
+        floodDialogueButtons = new Button[3];
+        float[] buttonBottoms = { 0.39f, 0.24f, 0.09f };
+        for (int i = 0; i < floodDialogueButtons.Length; i++)
+        {
+            int choice = i;
+            floodDialogueButtons[i] = AddButton(card, "Diyalog Yanıtı " + (i + 1), "",
+                new Vector2(0.08f, buttonBottoms[i]), new Vector2(0.92f, buttonBottoms[i] + 0.12f),
+                i == 0, () => owner.Scenario?.SelectFloodDialogueChoice(choice));
+        }
+        AddText(card, "Diyalog Kontrol İpucu", "Yanıtı fareyle seç veya 1 / 2 / 3 tuşuna bas",
+            new Vector2(0.08f, 0.015f), new Vector2(0.92f, 0.075f), 14,
+            new Color32(172, 191, 205, 255), TextAnchor.MiddleCenter);
+        floodDialogueOverlay.SetActive(false);
+    }
+
+    public void ShowFloodDialogue(string title, string body, string[] options, string feedback)
+    {
+        if (floodDialogueOverlay == null)
+            return;
+
+        floodDialogueTitle.text = title;
+        floodDialogueBody.text = body;
+        floodDialogueFeedback.text = feedback;
+        for (int i = 0; i < floodDialogueButtons.Length; i++)
+        {
+            bool visible = options != null && i < options.Length;
+            floodDialogueButtons[i].gameObject.SetActive(visible);
+            if (visible)
+                floodDialogueButtons[i].GetComponentInChildren<Text>().text = (i + 1) + "   " + options[i];
+        }
+        floodDialogueOverlay.SetActive(true);
+        floodDialogueOverlay.transform.SetAsLastSibling();
+    }
+
+    public void HideFloodDialogue()
+    {
+        if (floodDialogueOverlay != null)
+            floodDialogueOverlay.SetActive(false);
     }
 
     private void BuildTrappedOverlay()
