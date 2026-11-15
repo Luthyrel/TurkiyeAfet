@@ -16,7 +16,8 @@ public class GameManager : MonoBehaviour
     public enum DisasterType
     {
         Earthquake,
-        Flood
+        Flood,
+        Landslide
     }
 
     public GameState CurrentState { get; private set; } = GameState.MainMenu;

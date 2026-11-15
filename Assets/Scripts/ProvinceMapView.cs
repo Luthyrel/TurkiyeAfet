@@ -34,10 +34,16 @@ public sealed class ProvinceMapView : MonoBehaviour
         mapRect = rect;
         highlightImage = overlay;
         if (ProvinceManager.Instance != null)
-            focusedPlate = GameManager.Instance != null
-                && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
-                ? ProvinceManager.Instance.GetFirstFloodProvincePlate()
-                : ProvinceManager.Instance.GetLastProvincePlate();
+        {
+            GameManager.DisasterType selectedDisaster = GameManager.Instance != null
+                ? GameManager.Instance.SelectedDisaster : GameManager.DisasterType.Earthquake;
+            focusedPlate = selectedDisaster switch
+            {
+                GameManager.DisasterType.Flood => ProvinceManager.Instance.GetFirstFloodProvincePlate(),
+                GameManager.DisasterType.Landslide => ProvinceManager.Instance.GetFirstLandslideTrainingProvincePlate(),
+                _ => ProvinceManager.Instance.GetLastProvincePlate()
+            };
+        }
 
         TextAsset maskAsset = Resources.Load<TextAsset>("ProvinceMap/province-id-mask");
         if (maskAsset == null)
@@ -85,10 +91,14 @@ public sealed class ProvinceMapView : MonoBehaviour
         ProvinceManager.Instance?.ClearSelection();
         SelectedPlate = 0;
         hoveredPlate = 0;
-        focusedPlate = GameManager.Instance != null
-            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood
-            ? ProvinceManager.Instance != null ? ProvinceManager.Instance.GetFirstFloodProvincePlate() : 74
-            : ProvinceManager.Instance != null ? ProvinceManager.Instance.GetLastProvincePlate() : 6;
+        GameManager.DisasterType selectedDisaster = GameManager.Instance != null
+            ? GameManager.Instance.SelectedDisaster : GameManager.DisasterType.Earthquake;
+        focusedPlate = selectedDisaster switch
+        {
+            GameManager.DisasterType.Flood => ProvinceManager.Instance != null ? ProvinceManager.Instance.GetFirstFloodProvincePlate() : 74,
+            GameManager.DisasterType.Landslide => ProvinceManager.Instance != null ? ProvinceManager.Instance.GetFirstLandslideTrainingProvincePlate() : 24,
+            _ => ProvinceManager.Instance != null ? ProvinceManager.Instance.GetLastProvincePlate() : 6
+        };
         ProvinceSelected?.Invoke(0);
         RefreshHighlight();
     }

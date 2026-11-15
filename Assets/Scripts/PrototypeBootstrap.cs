@@ -8,6 +8,21 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     public static PrototypeBootstrap Instance { get; private set; }
 
     private readonly Dictionary<string, Material> materials = new Dictionary<string, Material>();
+    private sealed class LandslideDebrisBody
+    {
+        public Rigidbody Body;
+        public float ReleaseAt;
+        public Vector3 Impulse;
+        public Vector3 StartPosition;
+        public Quaternion StartRotation;
+        public bool Released;
+    }
+
+    private readonly List<LandslideDebrisBody> landslideDebris = new List<LandslideDebrisBody>();
+    private readonly List<Rigidbody> landslideTrees = new List<Rigidbody>();
+    private readonly List<Rigidbody> landslideStructure = new List<Rigidbody>();
+    private readonly List<float> landslideTreeReleaseTimes = new List<float>();
+    private readonly List<float> landslideStructureReleaseTimes = new List<float>();
     private PrototypeScenario scenario;
     private Material yellowBottleCap;
     private PrototypePlayerController player;
@@ -20,6 +35,9 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private GameManager.DisasterType worldDisasterType;
     private Transform floodWater;
     private Vector3 floodSafePosition;
+    private Vector3 landslideSafePosition;
+    private ParticleSystem landslideDust;
+    private int lastLandslideDustBurst = -1;
 
     public PrototypeScenario Scenario => scenario;
 
@@ -52,29 +70,50 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         if (ProvinceManager.Instance != null)
         {
             int savedPlate = ProvinceManager.Instance.GetLastProvincePlate();
-            if (worldDisasterType == GameManager.DisasterType.Flood
-                && !ProvinceManager.Instance.IsFloodProvince(savedPlate))
-                savedPlate = ProvinceManager.Instance.GetFirstFloodProvincePlate();
+            if (ProvinceManager.Instance.GetPrimaryDisasterForProvince(savedPlate) != worldDisasterType)
+                savedPlate = worldDisasterType switch
+                {
+                    GameManager.DisasterType.Flood => ProvinceManager.Instance.GetFirstFloodProvincePlate(),
+                    GameManager.DisasterType.Landslide => ProvinceManager.Instance.GetFirstLandslideTrainingProvincePlate(),
+                    _ => 6
+                };
             ProvinceManager.Instance.SelectProvince(savedPlate);
         }
 
-        string scenarioName = worldDisasterType == GameManager.DisasterType.Flood
-            ? "Sel ve Taşkın Senaryosu" : "Deprem Senaryosu";
+        string scenarioName = worldDisasterType switch
+        {
+            GameManager.DisasterType.Flood => "Sel ve Taşkın Senaryosu",
+            GameManager.DisasterType.Landslide => "Heyelan Farkındalık Senaryosu",
+            _ => "Deprem Senaryosu"
+        };
         scenario = new GameObject(scenarioName).AddComponent<PrototypeScenario>();
         if (worldDisasterType == GameManager.DisasterType.Flood)
             BuildFloodWorld();
+        else if (worldDisasterType == GameManager.DisasterType.Landslide)
+            BuildLandslideWorld();
         else
             BuildWorld();
 
         GameObject playerObject = new GameObject("Oyuncu", typeof(CharacterController));
         player = playerObject.AddComponent<PrototypePlayerController>();
-        Vector3 playerSpawn = worldDisasterType == GameManager.DisasterType.Flood
-            ? new Vector3(-8.6f, 0f, -2.6f) : new Vector3(-0.4f, 0f, -2.3f);
-        float playerYaw = worldDisasterType == GameManager.DisasterType.Flood ? 0f : 255f;
+        Vector3 playerSpawn = worldDisasterType switch
+        {
+            GameManager.DisasterType.Flood => new Vector3(-8.6f, 0f, -2.6f),
+            GameManager.DisasterType.Landslide => new Vector3(0f, 0f, 10f),
+            _ => new Vector3(-0.4f, 0f, -2.3f)
+        };
+        float playerYaw = worldDisasterType switch
+        {
+            GameManager.DisasterType.Flood => 0f,
+            GameManager.DisasterType.Landslide => 180f,
+            _ => 255f
+        };
         player.Initialize(scenario, playerSpawn, playerYaw);
         scenario.Initialize(this, player, safeTablePosition);
         if (worldDisasterType == GameManager.DisasterType.Flood)
             scenario.ConfigureFlood(floodWater, floodSafePosition);
+        else if (worldDisasterType == GameManager.DisasterType.Landslide)
+            scenario.ConfigureLandslide(landslideSafePosition);
         player.SetControlsEnabled(false);
 
         ui = new GameObject("Arayüz Yöneticisi").AddComponent<PrototypeUI>();
@@ -196,7 +235,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         water.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
         water.renderQueue = 3000;
 
-        CreateBox("Taşkın Mahallesi Zemin", new Vector3(0f, -0.18f, 1f), new Vector3(40f, 0.36f, 32f), ground);
+        CreateBox("Taşkın Mahallesi Zemin", new Vector3(0f, -0.18f, 1f), new Vector3(56f, 0.36f, 32f), ground);
         CreateBox("Mahalle Yolu", new Vector3(2f, 0.015f, 3f), new Vector3(25f, 0.05f, 6f), asphalt);
         CreateBox("Yol Orta Çizgisi", new Vector3(2f, 0.05f, 3f), new Vector3(23f, 0.025f, 0.10f),
             MakeMaterial("Yol Çizgisi", new Color32(224, 204, 145, 255)));
@@ -225,6 +264,773 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         BuildFloodTasks(wood, green);
     }
 
+    private void BuildLandslideWorld()
+    {
+        landslideDebris.Clear();
+        landslideTrees.Clear();
+        landslideStructure.Clear();
+        landslideTreeReleaseTimes.Clear();
+        landslideStructureReleaseTimes.Clear();
+        landslideSafePosition = new Vector3(17f, 0f, 8f);
+
+        RenderSettings.fog = true;
+        RenderSettings.fogColor = new Color32(166, 177, 176, 255);
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogDensity = 0.0042f;
+        RenderSettings.ambientSkyColor = new Color32(170, 190, 203, 255);
+        RenderSettings.ambientEquatorColor = new Color32(116, 132, 128, 255);
+        RenderSettings.ambientGroundColor = new Color32(58, 65, 57, 255);
+        RenderSettings.ambientIntensity = 0.98f;
+
+        Material meadow = MakeMaterial("Heyelan Dağ Çayırı", new Color32(77, 103, 76, 255));
+        Material grassLight = MakeMaterial("Yamaç Güneş Alan Otlar", new Color32(105, 124, 83, 255));
+        Material grassDark = MakeMaterial("Yamaç Gölgeli Otlar", new Color32(57, 77, 62, 255));
+        Material soil = MakeMaterial("Nemli Yamaç Toprağı", new Color32(107, 78, 55, 255));
+        Material clay = MakeMaterial("Killi Toprak Katmanı", new Color32(137, 93, 63, 255));
+        Material shale = MakeMaterial("Açıkta Kalan Şist", new Color32(92, 94, 87, 255));
+        Material stone = MakeMaterial("Yamaç Kayası", new Color32(106, 108, 100, 255));
+        Material stoneLight = MakeMaterial("Açık Gri Kayalar", new Color32(132, 133, 123, 255));
+        Material trunk = MakeMaterial("Islak Ağaç Kabuğu", new Color32(75, 57, 42, 255));
+        Material pine = MakeMaterial("Dağ Çamı İğneleri", new Color32(47, 78, 58, 255));
+        Material pineLight = MakeMaterial("Dağ Çamı Güneşli İğneleri", new Color32(68, 100, 67, 255));
+        Material deciduous = MakeMaterial("Yapraklı Ağaç Tacı", new Color32(83, 110, 67, 255));
+        Material wetMud = MakeMaterial("Akışkan Koyu Çamur", new Color32(91, 67, 48, 255));
+        Material freshMud = MakeMaterial("Yeni Kopmuş Islak Toprak", new Color32(126, 88, 59, 255));
+        Material road = MakeMaterial("Dağ Köyü Asfaltı", new Color32(55, 62, 61, 255));
+        Material roadEdge = MakeMaterial("Yol Kenarı Taşı", new Color32(133, 132, 117, 255));
+        Material wall = MakeMaterial("Köy Evi Sıvası", new Color32(185, 169, 137, 255));
+        Material roof = MakeMaterial("Köy Evi Kiremiti", new Color32(128, 76, 57, 255));
+        Material glass = MakeMaterial("Pencere Camı", new Color32(80, 126, 137, 255));
+        Material safeGreen = MakeMaterial("Acil Toplanma Alanı Yeşili", new Color32(56, 140, 111, 255));
+        Material amber = MakeMaterial("Acil Yönlendirme Sarısı", new Color32(220, 175, 78, 255));
+        Material emergencyRed = MakeMaterial("Acil Çağrı Kırmızısı", new Color32(182, 59, 48, 255));
+        Material darkMetal = MakeMaterial("Acil Çağrı Cihazı Metal", new Color32(39, 52, 54, 255));
+        Material screen = MakeMaterial("Acil Çağrı Ekranı", new Color32(45, 104, 92, 255));
+
+        CreateBox("Dağ Vadisi Alt Zemini", new Vector3(0f, -0.28f, 2f), new Vector3(52f, 0.56f, 54f), meadow);
+        BuildLandslideMountain(meadow, grassLight, grassDark, soil, clay, shale, stone, stoneLight, trunk, pine, pineLight, deciduous);
+        BuildLandslideRoad(road, roadEdge);
+        BuildLandslideVillage(wall, roof, glass, trunk);
+        BuildLandslideVegetation(meadow, trunk, pine, pineLight, deciduous, stone, stoneLight);
+        BuildLandslideClues(trunk, grassDark, soil, clay, shale);
+        BuildLandslideRefuge(safeGreen, amber, trunk, darkMetal, screen, emergencyRed);
+        BuildLandslideDebris(soil, clay, shale, stone, stoneLight, wetMud, freshMud);
+        CreateLandslideDust();
+    }
+
+    private void BuildLandslideMountain(Material grass, Material grassLight, Material grassDark,
+        Material soil, Material clay, Material shale, Material stone, Material stoneLight,
+        Material trunk, Material pine, Material pineLight, Material deciduous)
+    {
+        const int columns = 42;
+        const int rows = 28;
+        const float minX = -21f;
+        const float maxX = 21f;
+        const float rearZ = -22f;
+        const float toeZ = -2f;
+        Vector3[] vertices = new Vector3[(columns + 1) * (rows + 1)];
+        Vector2[] uv = new Vector2[vertices.Length];
+        int[] triangles = new int[columns * rows * 6];
+        int vertex = 0;
+        for (int zIndex = 0; zIndex <= rows; zIndex++)
+        {
+            float z = Mathf.Lerp(rearZ, toeZ, zIndex / (float)rows);
+            for (int xIndex = 0; xIndex <= columns; xIndex++)
+            {
+                float x = Mathf.Lerp(minX, maxX, xIndex / (float)columns);
+                vertices[vertex] = new Vector3(x, LandslideSlopeHeight(x, z), z);
+                uv[vertex] = new Vector2(xIndex / (float)columns * 8f, zIndex / (float)rows * 6f);
+                vertex++;
+            }
+        }
+        int triangle = 0;
+        for (int zIndex = 0; zIndex < rows; zIndex++)
+        {
+            for (int xIndex = 0; xIndex < columns; xIndex++)
+            {
+                int a = zIndex * (columns + 1) + xIndex;
+                int b = a + columns + 1;
+                triangles[triangle++] = a; triangles[triangle++] = b; triangles[triangle++] = a + 1;
+                triangles[triangle++] = a + 1; triangles[triangle++] = b; triangles[triangle++] = b + 1;
+            }
+        }
+        Mesh mountainMesh = new Mesh { name = "Düzensiz Doğal Dağ Yamacı" };
+        mountainMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        mountainMesh.vertices = vertices;
+        mountainMesh.uv = uv;
+        mountainMesh.triangles = triangles;
+        mountainMesh.RecalculateNormals();
+        mountainMesh.RecalculateBounds();
+        GameObject mountain = new GameObject("Yüksek Kayalık Dağ Yamacı");
+        mountain.AddComponent<MeshFilter>().sharedMesh = mountainMesh;
+        mountain.AddComponent<MeshRenderer>().sharedMaterial = grass;
+        mountain.AddComponent<MeshCollider>().sharedMesh = mountainMesh;
+
+        // Irregular exposed rock and clay scars follow the slope rather than forming flat horizontal bands.
+        Vector2[] rockPatches = { new Vector2(-14f,-9f), new Vector2(-10f,-15f), new Vector2(-4f,-11f), new Vector2(2f,-17f), new Vector2(8f,-12f), new Vector2(14f,-18f), new Vector2(16f,-8f), new Vector2(-17f,-17f), new Vector2(5f,-7f) };
+        for (int i = 0; i < rockPatches.Length; i++)
+        {
+            float radiusX = 1.6f + (i % 3) * 0.75f;
+            float radiusZ = 1.1f + (i % 2) * 0.8f;
+            CreateLandslideSlopePatch("Düzensiz Kaya Yüzleği " + (i + 1), rockPatches[i], radiusX, radiusZ,
+                i % 2 == 0 ? shale : stone, i * 47 + 11, 0.06f);
+        }
+        Vector2[] soilScars = { new Vector2(-8f,-5.2f), new Vector2(1.7f,-8.3f), new Vector2(11f,-5.9f), new Vector2(-2f,-15.5f) };
+        for (int i = 0; i < soilScars.Length; i++)
+            CreateLandslideSlopePatch("Açıkta Kalan Killi Toprak " + i, soilScars[i], 1.6f + (i % 2) * 0.8f, 1.2f,
+                i % 2 == 0 ? clay : soil, 900 + i * 29, 0.09f);
+
+        // Retaining trees and rock outcrops add scale across the uneven mountainside.
+        for (int row = 0; row < 4; row++)
+        {
+            float z = -18f + row * 3.1f;
+            for (int column = 0; column < 9; column++)
+            {
+                float x = -18f + column * 4.45f + Mathf.Sin((row + 1) * (column + 2)) * 0.8f;
+                if (Mathf.Abs(x) < 2.8f && z > -13f)
+                    continue;
+                float y = LandslideSlopeHeight(x, z);
+                if (y < 2f)
+                    continue;
+                CreateLandslideTree(new Vector3(x, y, z), row * 11 + column, trunk,
+                    (row + column) % 3 == 0 ? deciduous : pine, (row + column) % 2 == 0 ? pineLight : grassDark,
+                    3.2f + ((row + column) % 4) * 0.45f, false, 0f);
+            }
+        }
+
+        for (int i = 0; i < 24; i++)
+        {
+            float x = -18.5f + ((i * 7.31f) % 37f);
+            float z = -20.4f + ((i * 3.17f) % 15f);
+            Vector3 scale = new Vector3(0.55f + (i % 4) * 0.25f, 0.45f + (i % 3) * 0.27f, 0.5f + (i % 5) * 0.18f);
+            float y = LandslideSlopeHeight(x, z) + scale.y * 0.28f;
+            GameObject rock = CreateLandslideRock("Yamaçtaki Düzensiz Kaya Çıkıntısı " + i,
+                new Vector3(x, y, z), scale, i % 3 == 0 ? stoneLight : stone, false, 0f, i + 401);
+        }
+    }
+
+    private float LandslideSlopeHeight(float x, float z)
+    {
+        float rise = Mathf.Clamp01(Mathf.InverseLerp(-2.5f, -22f, z));
+        float broadRidge = Mathf.Sin(x * 0.22f + z * 0.12f) * 0.55f
+            + Mathf.Sin(x * 0.43f - z * 0.19f) * 0.24f
+            + (Mathf.PerlinNoise((x + 31f) * 0.12f, (z + 29f) * 0.105f) - 0.5f) * 1.2f;
+        return Mathf.Max(0.22f, 0.32f + rise * (12.4f + broadRidge));
+    }
+
+    private void CreateLandslideSlopePatch(string name, Vector2 center, float radiusX, float radiusZ,
+        Material material, int seed, float lift)
+    {
+        const int segments = 11;
+        Vector3[] vertices = new Vector3[segments + 1];
+        int[] triangles = new int[segments * 3];
+        vertices[0] = new Vector3(center.x, LandslideSlopeHeight(center.x, center.y) + lift, center.y);
+        UnityEngine.Random.State oldState = UnityEngine.Random.state;
+        UnityEngine.Random.InitState(seed);
+        Vector2[] edge = new Vector2[segments];
+        for (int i = 0; i < segments; i++)
+        {
+            float angle = i * Mathf.PI * 2f / segments;
+            float uneven = UnityEngine.Random.Range(0.72f, 1.22f);
+            edge[i] = new Vector2(center.x + Mathf.Cos(angle) * radiusX * uneven,
+                center.y + Mathf.Sin(angle) * radiusZ * uneven);
+            vertices[i + 1] = new Vector3(edge[i].x, LandslideSlopeHeight(edge[i].x, edge[i].y) + lift, edge[i].y);
+            int next = (i + 1) % segments;
+            triangles[i * 3] = 0;
+            triangles[i * 3 + 1] = next + 1;
+            triangles[i * 3 + 2] = i + 1;
+        }
+        UnityEngine.Random.state = oldState;
+        GameObject patch = new GameObject(name);
+        Mesh mesh = new Mesh { name = name + " Mesh" };
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        patch.AddComponent<MeshFilter>().sharedMesh = mesh;
+        patch.AddComponent<MeshRenderer>().sharedMaterial = material;
+    }
+
+    private void BuildLandslideRoad(Material road, Material edge)
+    {
+        const int segments = 30;
+        Vector3[] vertices = new Vector3[(segments + 1) * 2];
+        int[] triangles = new int[segments * 6];
+        for (int i = 0; i <= segments; i++)
+        {
+            float t = i / (float)segments;
+            float x = Mathf.Lerp(-24f, 24f, t);
+            float z = 0.4f + Mathf.Sin(t * Mathf.PI * 2.3f) * 1.35f + Mathf.Sin(t * Mathf.PI * 7f) * 0.24f;
+            vertices[i * 2] = new Vector3(x, 0.035f, z - 1.8f);
+            vertices[i * 2 + 1] = new Vector3(x, 0.035f, z + 1.8f);
+            if (i < segments)
+            {
+                int a = i * 2;
+                int b = a + 2;
+                int index = i * 6;
+                triangles[index] = a; triangles[index + 1] = a + 1; triangles[index + 2] = b;
+                triangles[index + 3] = a + 1; triangles[index + 4] = b + 1; triangles[index + 5] = b;
+            }
+        }
+        GameObject roadObject = new GameObject("Dağ Köyüne Giden Kıvrımlı Yol");
+        Mesh mesh = new Mesh { name = "Kıvrımlı Köy Yolu Mesh" };
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        roadObject.AddComponent<MeshFilter>().sharedMesh = mesh;
+        roadObject.AddComponent<MeshRenderer>().sharedMaterial = road;
+        roadObject.AddComponent<MeshCollider>().sharedMesh = mesh;
+        for (int i = 0; i < 17; i++)
+        {
+            float t = (i + 0.5f) / 17f;
+            float x = Mathf.Lerp(-23f, 23f, t);
+            float z = 0.4f + Mathf.Sin(t * Mathf.PI * 2.3f) * 1.35f + Mathf.Sin(t * Mathf.PI * 7f) * 0.24f;
+            CreateBox("Yol Kenarı Düzensiz Taş " + i, new Vector3(x, 0.14f, z + (i % 2 == 0 ? -2.0f : 2.0f)),
+                new Vector3(0.32f + (i % 3) * 0.12f, 0.24f, 0.25f), edge).transform.rotation = Quaternion.Euler(0f, i * 31f, 0f);
+        }
+    }
+
+    private void BuildLandslideVillage(Material wall, Material roof, Material glass, Material timber)
+    {
+        CreateLandslideVillageHouse(new Vector3(-15f, 0f, 4.5f), wall, roof, glass, timber, false);
+        // Keep the vulnerable house beside the debris runout so the staged slide can reach it.
+        // The clear lateral route to the refuge remains open on the eastern side of the valley.
+        CreateLandslideVillageHouse(new Vector3(10f, 0f, 3.3f), wall, roof, glass, timber, true);
+    }
+
+    private void CreateLandslideVillageHouse(Vector3 center, Material wall, Material roof, Material glass,
+        Material timber, bool vulnerable)
+    {
+        float width = vulnerable ? 5.0f : 4.4f;
+        float depth = vulnerable ? 4.3f : 4.0f;
+        CreateBox("Dağ Köyü Evi Temel Taşı", center + new Vector3(0f, 0.16f, 0f),
+            new Vector3(width + 0.35f, 0.32f, depth + 0.35f), timber);
+        CreateBox("Dağ Köyü Evi Arka Duvarı", center + new Vector3(0f, 1.45f, -depth * 0.5f),
+            new Vector3(width, 2.9f, 0.18f), wall);
+        CreateBox("Dağ Köyü Evi Sol Duvarı", center + new Vector3(-width * 0.5f, 1.45f, 0f),
+            new Vector3(0.18f, 2.9f, depth), wall);
+        CreateBox("Dağ Köyü Evi Sağ Duvarı", center + new Vector3(width * 0.5f, 1.45f, 0f),
+            new Vector3(0.18f, 2.9f, depth), wall);
+
+        if (vulnerable)
+        {
+            GameObject frontPanel = CreateBox("Heyelanda Hasar Alabilecek Ev Ön Duvarı", center + new Vector3(0f, 1.45f, depth * 0.5f),
+                new Vector3(width, 2.9f, 0.18f), wall);
+            Rigidbody panelBody = frontPanel.AddComponent<Rigidbody>();
+            panelBody.isKinematic = true;
+            panelBody.useGravity = false;
+            panelBody.mass = 180f;
+            landslideStructure.Add(panelBody);
+            landslideStructureReleaseTimes.Add(7.1f);
+            CreateBox("Heyelan Riski Altındaki Evin Penceresi", center + new Vector3(0.65f, 1.9f, depth * 0.5f + 0.1f),
+                new Vector3(1.1f, 0.85f, 0.05f), glass);
+            GameObject roofPanel = CreateBox("Heyelanda Yerinden Oynayan Kiremit Çatı", center + new Vector3(0f, 3.0f, 0f),
+                new Vector3(width + 0.7f, 0.24f, depth + 0.65f), roof);
+            Rigidbody roofBody = roofPanel.AddComponent<Rigidbody>();
+            roofBody.isKinematic = true;
+            roofBody.useGravity = false;
+            roofBody.mass = 110f;
+            landslideStructure.Add(roofBody);
+            landslideStructureReleaseTimes.Add(8.0f);
+        }
+        else
+        {
+            CreateBox("Köy Evi Ön Kapısı", center + new Vector3(-0.75f, 0.95f, depth * 0.5f + 0.08f),
+                new Vector3(0.82f, 1.9f, 0.08f), timber);
+            CreateBox("Köy Evi Penceresi", center + new Vector3(0.8f, 1.85f, depth * 0.5f + 0.1f),
+                new Vector3(1.05f, 0.82f, 0.05f), glass);
+            CreateBox("Köy Evi Kiremit Çatısı", center + new Vector3(0f, 3.0f, 0f),
+                new Vector3(width + 0.7f, 0.25f, depth + 0.65f), roof).transform.rotation = Quaternion.Euler(0f, 0f, 4f);
+        }
+    }
+
+    private void BuildLandslideVegetation(Material meadow, Material trunk, Material pine,
+        Material pineLight, Material deciduous, Material rock, Material rockLight)
+    {
+        for (int i = 0; i < 11; i++)
+        {
+            float x = -23f + (i * 4.37f) % 46f;
+            float z = -1.5f + (i % 4) * 2.4f;
+            if (x > 12.5f && z > 4f)
+                continue;
+            bool leaningClue = i == 2;
+            CreateLandslideTree(new Vector3(x, 0f, z), 100 + i, trunk,
+                i % 3 == 0 ? deciduous : pine, pineLight, 3.3f + (i % 4) * 0.5f, true,
+                leaningClue ? -12f : 0f);
+            if (i == 1 || i == 4 || i == 7 || i == 9)
+            {
+                float size = 0.65f + (i % 3) * 0.34f;
+                CreateLandslideRock("Vadi Kenarı Düzensiz Kaya " + i,
+                    new Vector3(x * 0.72f, size * 0.42f, z + 1.1f), new Vector3(size * 1.4f, size, size * 1.2f),
+                    i % 2 == 0 ? rock : rockLight, false, 0f, 1200 + i);
+            }
+        }
+
+        for (int i = 0; i < 25; i++)
+        {
+            float x = -23f + ((i * 11.9f) % 46f);
+            float z = -2.5f + ((i * 6.37f) % 25f);
+            if (Mathf.Abs(x) > 20f || (x > 13f && z > 5f))
+                continue;
+            float size = 0.3f + (i % 5) * 0.11f;
+            GameObject shrub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            shrub.name = "Vadi Çalısı " + i;
+            shrub.transform.position = new Vector3(x, size * 0.45f, z);
+            shrub.transform.localScale = new Vector3(size * 1.8f, size * 0.8f, size * 1.35f);
+            shrub.GetComponent<Renderer>().sharedMaterial = i % 3 == 0 ? pineLight : meadow;
+            Collider shrubCollider = shrub.GetComponent<Collider>();
+            if (shrubCollider != null)
+                shrubCollider.enabled = false;
+        }
+    }
+
+    private Rigidbody CreateLandslideTree(Vector3 position, int variation, Material trunkMaterial,
+        Material canopyMaterial, Material canopyLight, float height, bool canFall, float leanDegrees)
+    {
+        GameObject tree = new GameObject("Dağ Çamı ve Yapraklı Ağaç " + variation);
+        tree.transform.position = position;
+        tree.transform.rotation = Quaternion.Euler(0f, variation * 37f, leanDegrees);
+        float width = 0.18f + (variation % 3) * 0.035f;
+        GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        trunk.name = "Ağaç Gövdesi";
+        trunk.transform.SetParent(tree.transform, false);
+        trunk.transform.localPosition = new Vector3(0f, height * 0.5f, 0f);
+        trunk.transform.localScale = new Vector3(width, height * 0.5f, width);
+        trunk.GetComponent<Renderer>().sharedMaterial = trunkMaterial;
+        Collider trunkCollider = trunk.GetComponent<Collider>();
+        if (trunkCollider != null)
+            trunkCollider.enabled = false;
+
+        for (int cluster = 0; cluster < 5; cluster++)
+        {
+            GameObject foliage = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            foliage.name = "Düzensiz Yaprak Kümesi " + cluster;
+            foliage.transform.SetParent(tree.transform, false);
+            foliage.transform.localPosition = new Vector3(Mathf.Sin(cluster * 2.2f + variation) * 0.36f,
+                height * (0.62f + (cluster % 3) * 0.12f), Mathf.Cos(cluster * 1.7f + variation) * 0.3f);
+            float crown = 0.8f + (cluster % 2) * 0.32f;
+            foliage.transform.localScale = new Vector3(crown, crown * 0.92f, crown);
+            foliage.GetComponent<Renderer>().sharedMaterial = cluster % 2 == 0 ? canopyMaterial : canopyLight;
+            Collider foliageCollider = foliage.GetComponent<Collider>();
+            if (foliageCollider != null)
+                foliageCollider.enabled = false;
+        }
+
+        Rigidbody body = tree.AddComponent<Rigidbody>();
+        body.isKinematic = true;
+        body.useGravity = false;
+        body.mass = 85f + variation % 5 * 25f;
+        body.interpolation = RigidbodyInterpolation.Interpolate;
+        body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+        CapsuleCollider capsule = tree.AddComponent<CapsuleCollider>();
+        capsule.center = new Vector3(0f, height * 0.5f, 0f);
+        capsule.height = height;
+        capsule.radius = width * 1.2f;
+        if (canFall)
+        {
+            landslideTrees.Add(body);
+            landslideTreeReleaseTimes.Add(4.5f + (variation % 4) * 0.85f);
+        }
+        return body;
+    }
+
+    private void BuildLandslideClues(Material trunk, Material grassDark, Material soil, Material clay, Material shale)
+    {
+        GameObject cracks = new GameObject("İnceleme Noktası - Yeni Oluşmuş Zemin Çatlakları");
+        const float crackX = -4.2f;
+        const float crackZ = -3.25f;
+        cracks.transform.position = new Vector3(crackX, LandslideSlopeHeight(crackX, crackZ) + 0.18f, crackZ);
+        BoxCollider crackCollider = cracks.AddComponent<BoxCollider>();
+        crackCollider.size = new Vector3(1.8f, 0.32f, 1.5f);
+        PrototypeInteractable crackTask = cracks.AddComponent<PrototypeInteractable>();
+        crackTask.Configure(PrototypeAction.InspectLandslideWarnings, "Genişleyen zemin çatlaklarını incele");
+        Material fissure = MakeMaterial("Zemindeki Koyu Fissürler", new Color32(47, 43, 36, 255));
+        Material rawEdge = MakeMaterial("Çatlak Kenarında Taze Toprak", new Color32(146, 104, 70, 255));
+        for (int line = 0; line < 5; line++)
+        {
+            float angle = -12f + line * 9f;
+            float x = -0.48f + line * 0.22f;
+            float crackWorldX = cracks.transform.position.x + x;
+            float crackWorldZ = cracks.transform.position.z + (line % 2 == 0 ? -0.12f : 0.12f);
+            GameObject crack = CreateBox("Düzensiz Çatlak İzi " + line,
+                new Vector3(crackWorldX, LandslideSlopeHeight(crackWorldX, crackWorldZ) + 0.035f, crackWorldZ),
+                new Vector3(1.16f - (line % 3) * 0.12f, 0.035f, 0.045f + (line % 2) * 0.025f), fissure);
+            crack.transform.rotation = Quaternion.Euler(0f, angle, 0f);
+            Collider fissureCollider = crack.GetComponent<Collider>();
+            if (fissureCollider != null) fissureCollider.enabled = false;
+            GameObject edge = CreateBox("Çatlak Kenarındaki Açık Toprak " + line,
+                crack.transform.position + new Vector3(-0.075f, 0.012f, 0.05f), new Vector3(0.06f, 0.025f, 0.88f), rawEdge);
+            Collider edgeCollider = edge.GetComponent<Collider>();
+            if (edgeCollider != null) edgeCollider.enabled = false;
+        }
+        scenario.AddLandslidePreparationTask(crackTask);
+
+        const float leaningTreeX = -10.1f;
+        const float leaningTreeZ = -2.85f;
+        Rigidbody leaningTree = CreateLandslideTree(new Vector3(leaningTreeX,
+            LandslideSlopeHeight(leaningTreeX, leaningTreeZ), leaningTreeZ), 303, trunk,
+            MakeMaterial("Eğik Ağacın Yaprakları", new Color32(70, 91, 56, 255)), grassDark, 4.0f, false, 18f);
+        PrototypeInteractable treeClue = leaningTree.gameObject.AddComponent<PrototypeInteractable>();
+        treeClue.Configure(PrototypeAction.InspectLandslideWarnings, "Kök çevresi açılmış eğik ağacı incele");
+        scenario.AddLandslidePreparationTask(treeClue);
+
+        GameObject seepage = new GameObject("İnceleme Noktası - Yamaçtan Yeni Çıkan Su");
+        const float seepageX = 4.0f;
+        const float seepageZ = -3.15f;
+        seepage.transform.position = new Vector3(seepageX, LandslideSlopeHeight(seepageX, seepageZ) + 0.16f, seepageZ);
+        BoxCollider seepageCollider = seepage.AddComponent<BoxCollider>();
+        seepageCollider.size = new Vector3(1.7f, 0.28f, 1.35f);
+        PrototypeInteractable seepageTask = seepage.AddComponent<PrototypeInteractable>();
+        seepageTask.Configure(PrototypeAction.InspectLandslideWarnings, "Yamaç eteğindeki yeni su sızıntısını incele");
+        CreateLandslideSlopePatch("Sızıntının Islak Toprağı", new Vector2(seepageX, seepageZ), 1.1f, 0.75f, soil, 755, 0.12f);
+        for (int i = 0; i < 4; i++)
+        {
+            float puddleX = seepageX - 0.3f + i * 0.18f;
+            float puddleZ = seepageZ - 0.3f + i * 0.16f;
+            GameObject water = CreateBox("Yamaç Eteğindeki Su Birikintisi " + i,
+                new Vector3(puddleX, LandslideSlopeHeight(puddleX, puddleZ) + 0.035f, puddleZ),
+                new Vector3(0.55f - i * 0.04f, 0.018f, 0.24f), shale);
+            water.transform.rotation = Quaternion.Euler(0f, i * 22f, 0f);
+            Collider waterCollider = water.GetComponent<Collider>();
+            if (waterCollider != null) waterCollider.enabled = false;
+        }
+        GameObject waterTrail = CreateBox("Sızıntıdan Akan İnce Su İzi",
+            new Vector3(3.35f, LandslideSlopeHeight(3.35f, -3.55f) + 0.028f, -3.55f),
+            new Vector3(0.16f, 0.018f, 0.72f), MakeMaterial("Soğuk Yamaç Suyu", new Color32(90, 130, 137, 255)));
+        waterTrail.transform.rotation = Quaternion.Euler(0f, 12f, 0f);
+        Collider waterTrailCollider = waterTrail.GetComponent<Collider>();
+        if (waterTrailCollider != null) waterTrailCollider.enabled = false;
+        scenario.AddLandslidePreparationTask(seepageTask);
+
+        // Fresh scar markings and exposed roots are environmental evidence, not instruction boards.
+        CreateLandslideSlopePatch("Yamaç Üstündeki Taze Kayma İzi", new Vector2(0.5f, -4.8f), 2.0f, 1.0f, clay, 821, 0.12f);
+        CreateLandslideSlopePatch("Kayma İzi Yanındaki Koyu Nem", new Vector2(-1.8f, -5.5f), 1.5f, 0.82f, shale, 822, 0.14f);
+    }
+
+    private void BuildLandslideRefuge(Material safeGreen, Material amber, Material timber,
+        Material cabinet, Material screen, Material red)
+    {
+        GameObject clearing = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        clearing.name = "Yamaçtan Uzak Güvenli Toplanma Çayırı";
+        clearing.transform.position = landslideSafePosition + new Vector3(0f, 0.012f, 0f);
+        clearing.transform.localScale = new Vector3(6.6f, 0.025f, 6.6f);
+        clearing.GetComponent<Renderer>().sharedMaterial = MakeMaterial("Güvenli Çayır Toprağı", new Color32(87, 120, 81, 255));
+        Collider clearingCollider = clearing.GetComponent<Collider>();
+        if (clearingCollider != null) clearingCollider.enabled = false;
+        for (int i = 0; i < 12; i++)
+        {
+            float angle = i * Mathf.PI * 2f / 12f;
+            Vector3 position = landslideSafePosition + new Vector3(Mathf.Cos(angle) * 3.1f, 0.13f, Mathf.Sin(angle) * 3.1f);
+            GameObject boundary = CreateBox("Güvenli Alan Alçak Yeşil Sınır Taşı " + i, position,
+                new Vector3(0.24f, 0.22f, 0.24f), i % 3 == 0 ? amber : safeGreen);
+            boundary.transform.rotation = Quaternion.Euler(0f, i * 27f, 0f);
+        }
+
+        // An actual emergency call station replaces the old instruction boards.
+        Vector3 station = landslideSafePosition + new Vector3(0f, 0f, -1.5f);
+        CreateBox("Acil Çağrı Cihazı Ayağı", station + new Vector3(0f, 0.65f, 0f), new Vector3(0.18f, 1.3f, 0.18f), timber);
+        GameObject callDevice = CreateBox("Güvenli Alandaki 112 Acil Çağrı Cihazı", station + new Vector3(0f, 1.5f, 0f),
+            new Vector3(0.86f, 1.18f, 0.38f), cabinet);
+        PrototypeInteractable emergency = callDevice.AddComponent<PrototypeInteractable>();
+        emergency.Configure(PrototypeAction.CallForLandslideHelp, "Acil cihazı kullan ve 112'yi ara");
+        GameObject callScreen = CreateBox("Acil Çağrı Cihazı Ekranı", station + new Vector3(0f, 1.72f, 0.205f),
+            new Vector3(0.61f, 0.29f, 0.035f), screen);
+        GameObject callButton = CreateBox("112 Çağrı Düğmesi", station + new Vector3(0f, 1.25f, 0.225f),
+            new Vector3(0.24f, 0.18f, 0.06f), red);
+        GameObject handset = CreateBox("Acil Çağrı Cihazı Ahizesi", station + new Vector3(-0.24f, 1.48f, 0.25f),
+            new Vector3(0.09f, 0.46f, 0.09f), amber);
+        handset.transform.rotation = Quaternion.Euler(0f, 0f, -18f);
+        GameObject beacon = CreateBox("Güvenli Alan Yeşil Feneri", station + new Vector3(0f, 2.3f, 0f),
+            new Vector3(0.28f, 0.16f, 0.28f), safeGreen);
+        foreach (Collider visualCollider in new[] { callScreen.GetComponent<Collider>(), callButton.GetComponent<Collider>(), handset.GetComponent<Collider>(), beacon.GetComponent<Collider>() })
+            if (visualCollider != null) visualCollider.enabled = false;
+        Renderer beaconRenderer = beacon.GetComponent<Renderer>();
+        if (beaconRenderer != null && beaconRenderer.material.HasProperty("_EmissionColor"))
+        {
+            beaconRenderer.material.EnableKeyword("_EMISSION");
+            beaconRenderer.material.SetColor("_EmissionColor", new Color(0.2f, 0.9f, 0.55f) * 1.2f);
+        }
+        scenario.SetLandslideAfterTask(emergency);
+    }
+
+    private void BuildLandslideDebris(Material soil, Material clay, Material shale,
+        Material stone, Material stoneLight, Material wetMud, Material freshMud)
+    {
+        // Pebbles start first, followed by separate earth and boulder pulses.
+        for (int i = 0; i < 22; i++)
+        {
+            float x = -9.6f + (i % 8) * 2.65f + (i / 8) * 0.48f;
+            float z = -13.5f + (i / 8) * 2.0f + (i % 3) * 0.22f;
+            Vector3 scale = new Vector3(0.28f + (i % 4) * 0.13f, 0.22f + (i % 3) * 0.12f, 0.3f + (i % 5) * 0.09f);
+            float y = LandslideSlopeHeight(x, z) + scale.y * 0.44f;
+            float releaseAt = 0.55f + (i % 7) * 0.48f;
+            CreateLandslideMovingDebris("Önce Kopan Küçük Taş " + i, new Vector3(x, y, z), scale,
+                i % 2 == 0 ? stoneLight : stone, 3f + i % 5 * 2f, 1400 + i, releaseAt,
+                new Vector3((i % 3 - 1) * 0.55f, -0.3f, 1.7f));
+        }
+        for (int i = 0; i < 8; i++)
+        {
+            float x = -7.5f + i * 2.05f;
+            float z = -9.1f + (i % 2) * 1.15f;
+            Vector3 scale = new Vector3(1.1f + (i % 3) * 0.54f, 0.5f + (i % 2) * 0.32f, 1.25f + (i % 4) * 0.3f);
+            float y = LandslideSlopeHeight(x, z) + scale.y * 0.46f;
+            CreateLandslideMovingDebris("Koparak İnen Islak Toprak Kütlesi " + i,
+                new Vector3(x, y, z), scale, i % 2 == 0 ? wetMud : freshMud,
+                70f + i * 12f, 1650 + i, 2.1f + (i % 4) * 1.05f,
+                new Vector3((i % 3 - 1) * 1.4f, -0.4f, 3.4f));
+        }
+        for (int i = 0; i < 9; i++)
+        {
+            float x = -8.3f + i * 2.05f;
+            float z = -5.7f - (i % 3) * 0.7f;
+            Vector3 scale = new Vector3(1.0f + (i % 3) * 0.65f, 0.8f + (i % 4) * 0.32f, 1.1f + (i % 2) * 0.7f);
+            float y = LandslideSlopeHeight(x, z) + scale.y * 0.47f;
+            CreateLandslideMovingDebris("Ana Heyelan Dalgasındaki Köşeli Kaya " + i,
+                new Vector3(x, y, z), scale, i % 3 == 0 ? stoneLight : shale,
+                120f + i * 38f, 1840 + i, 4.2f + (i % 5) * 0.7f,
+                new Vector3((i % 4 - 1.5f) * 1.25f, 0.3f, 5.0f));
+        }
+        for (int i = 0; i < 5; i++)
+        {
+            float x = -7f + i * 3.0f;
+            float z = -7.1f + (i % 2) * 0.8f;
+            Vector3 scale = new Vector3(2.2f + (i % 2) * 1.2f, 0.55f + (i % 3) * 0.25f, 1.6f + (i % 2) * 0.7f);
+            float y = LandslideSlopeHeight(x, z) + scale.y * 0.48f;
+            CreateLandslideMovingDebris("Yol Üzerine İnen Çamurlu Toprak Dili " + i,
+                new Vector3(x, y, z), scale, i % 2 == 0 ? wetMud : clay,
+                160f + i * 25f, 2100 + i, 5.4f + i * 0.64f,
+                new Vector3((i - 2) * 0.8f, -0.25f, 5.8f));
+        }
+    }
+
+    private void CreateLandslideMovingDebris(string name, Vector3 position, Vector3 scale,
+        Material material, float mass, int seed, float releaseAt, Vector3 impulse)
+    {
+        GameObject chunk = CreateLandslideRock(name, position, scale, material, true, mass, seed);
+        Rigidbody body = chunk.GetComponent<Rigidbody>();
+        body.isKinematic = true;
+        body.useGravity = false;
+        landslideDebris.Add(new LandslideDebrisBody
+        {
+            Body = body,
+            ReleaseAt = releaseAt,
+            Impulse = impulse,
+            StartPosition = body.position,
+            StartRotation = body.rotation
+        });
+    }
+
+    private GameObject CreateLandslideRock(string name, Vector3 position, Vector3 scale,
+        Material material, bool dynamic, float mass, int seed)
+    {
+        GameObject rock = new GameObject(name);
+        rock.transform.position = position;
+        rock.transform.rotation = Quaternion.Euler(seed * 13f % 360f, seed * 37f % 360f, seed * 23f % 360f);
+        rock.transform.localScale = scale;
+        Mesh mesh = CreateAngularRockMesh(name + " Mesh", seed, 0.22f);
+        rock.AddComponent<MeshFilter>().sharedMesh = mesh;
+        rock.AddComponent<MeshRenderer>().sharedMaterial = material;
+        MeshCollider collider = rock.AddComponent<MeshCollider>();
+        collider.sharedMesh = mesh;
+        collider.convex = true;
+        if (dynamic)
+        {
+            Rigidbody body = rock.AddComponent<Rigidbody>();
+            body.mass = mass;
+            body.useGravity = true;
+            body.isKinematic = false;
+            body.interpolation = RigidbodyInterpolation.Interpolate;
+            body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            body.maxAngularVelocity = 14f;
+            rock.AddComponent<PrototypeLandslideDebrisImpact>();
+        }
+        return rock;
+    }
+
+    private Mesh CreateAngularRockMesh(string name, int seed, float roughness)
+    {
+        List<Vector3> points = new List<Vector3>
+        {
+            new Vector3(0f,1f,0f), new Vector3(-1f,0f,0f), new Vector3(0f,0f,1f),
+            new Vector3(1f,0f,0f), new Vector3(0f,0f,-1f), new Vector3(0f,-1f,0f)
+        };
+        List<int> faces = new List<int>
+        {
+            0,2,1, 0,3,2, 0,4,3, 0,1,4,
+            5,1,2, 5,2,3, 5,3,4, 5,4,1
+        };
+        for (int pass = 0; pass < 2; pass++)
+        {
+            List<int> refined = new List<int>(faces.Count * 4);
+            Dictionary<long, int> midpointCache = new Dictionary<long, int>();
+            for (int i = 0; i < faces.Count; i += 3)
+            {
+                int a = faces[i], b = faces[i + 1], c = faces[i + 2];
+                int ab = Midpoint(a, b), bc = Midpoint(b, c), ca = Midpoint(c, a);
+                refined.AddRange(new[] { a, ab, ca, b, bc, ab, c, ca, bc, ab, bc, ca });
+            }
+            faces = refined;
+            int Midpoint(int a, int b)
+            {
+                int low = Mathf.Min(a, b);
+                int high = Mathf.Max(a, b);
+                long key = ((long)low << 32) | (uint)high;
+                if (midpointCache.TryGetValue(key, out int cached))
+                    return cached;
+                Vector3 point = (points[a] + points[b]).normalized;
+                int index = points.Count;
+                points.Add(point);
+                midpointCache[key] = index;
+                return index;
+            }
+        }
+
+        UnityEngine.Random.State previous = UnityEngine.Random.state;
+        UnityEngine.Random.InitState(seed);
+        for (int i = 0; i < points.Count; i++)
+        {
+            Vector3 direction = points[i].normalized;
+            float radius = 0.78f + UnityEngine.Random.Range(0f, roughness * 2f);
+            points[i] = direction * radius;
+        }
+        UnityEngine.Random.state = previous;
+        for (int i = 0; i < faces.Count; i += 3)
+        {
+            Vector3 a = points[faces[i]];
+            Vector3 b = points[faces[i + 1]];
+            Vector3 c = points[faces[i + 2]];
+            if (Vector3.Dot(Vector3.Cross(b - a, c - a), (a + b + c) / 3f) < 0f)
+            {
+                int swap = faces[i + 1]; faces[i + 1] = faces[i + 2]; faces[i + 2] = swap;
+            }
+        }
+        Mesh mesh = new Mesh { name = name };
+        mesh.vertices = points.ToArray();
+        mesh.triangles = faces.ToArray();
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    private void CreateLandslideDust()
+    {
+        GameObject dustObject = new GameObject("Heyelan Toz ve Toprak Bulutu");
+        landslideDust = dustObject.AddComponent<ParticleSystem>();
+        ParticleSystem.MainModule main = landslideDust.main;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.duration = 3.6f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(1.4f, 3.6f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(1.2f, 5.6f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.35f, 1.5f);
+        main.startColor = new ParticleSystem.MinMaxGradient(new Color32(126, 103, 81, 185));
+        main.gravityModifier = -0.12f;
+        main.maxParticles = 850;
+        ParticleSystem.EmissionModule emission = landslideDust.emission;
+        emission.enabled = false;
+        ParticleSystem.ShapeModule shape = landslideDust.shape;
+        shape.shapeType = ParticleSystemShapeType.Box;
+        shape.scale = new Vector3(16f, 1.4f, 2.5f);
+        ParticleSystemRenderer renderer = landslideDust.GetComponent<ParticleSystemRenderer>();
+        Shader particleShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (particleShader == null)
+            particleShader = Shader.Find("Particles/Standard Unlit");
+        if (particleShader != null)
+        {
+            Material particleMaterial = new Material(particleShader);
+            particleMaterial.name = "Heyelan Tozu Şeffaf Parçacık Malzemesi";
+            if (particleMaterial.HasProperty("_BaseColor"))
+                particleMaterial.SetColor("_BaseColor", new Color32(156, 130, 104, 180));
+            else if (particleMaterial.HasProperty("_Color"))
+                particleMaterial.SetColor("_Color", new Color32(156, 130, 104, 180));
+            renderer.material = particleMaterial;
+        }
+        renderer.renderMode = ParticleSystemRenderMode.Billboard;
+    }
+
+    public void BeginLandslideVisual()
+    {
+        lastLandslideDustBurst = -1;
+        for (int i = 0; i < landslideDebris.Count; i++)
+        {
+            LandslideDebrisBody item = landslideDebris[i];
+            item.Released = false;
+            item.Body.isKinematic = true;
+            item.Body.useGravity = false;
+            item.Body.position = item.StartPosition;
+            item.Body.rotation = item.StartRotation;
+            item.Body.linearVelocity = Vector3.zero;
+            item.Body.angularVelocity = Vector3.zero;
+        }
+        for (int i = 0; i < landslideTrees.Count; i++)
+        {
+            if (landslideTrees[i] != null)
+            {
+                landslideTrees[i].isKinematic = true;
+                landslideTrees[i].useGravity = false;
+            }
+        }
+        for (int i = 0; i < landslideStructure.Count; i++)
+        {
+            if (landslideStructure[i] != null)
+            {
+                landslideStructure[i].isKinematic = true;
+                landslideStructure[i].useGravity = false;
+            }
+        }
+        if (landslideDust != null)
+            landslideDust.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        PrototypeAudio.PlayLandslide();
+    }
+
+    public void UpdateLandslideVisual(float elapsed)
+    {
+        for (int i = 0; i < landslideDebris.Count; i++)
+        {
+            LandslideDebrisBody item = landslideDebris[i];
+            if (item.Released || elapsed < item.ReleaseAt || item.Body == null)
+                continue;
+            item.Released = true;
+            item.Body.useGravity = true;
+            item.Body.isKinematic = false;
+            // Values stored in Impulse describe launch velocity. Scale the impulse by mass
+            // so large boulders and mud slabs move with the same intended downhill speed.
+            item.Body.AddForce(item.Impulse * item.Body.mass, ForceMode.Impulse);
+            item.Body.AddTorque(new Vector3(item.Impulse.z, item.Impulse.x * 0.7f, -item.Impulse.z * 0.5f)
+                * item.Body.mass, ForceMode.Impulse);
+        }
+        for (int i = 0; i < landslideTrees.Count; i++)
+        {
+            Rigidbody tree = landslideTrees[i];
+            if (tree == null || !tree.isKinematic || elapsed < landslideTreeReleaseTimes[i])
+                continue;
+            tree.useGravity = true;
+            tree.isKinematic = false;
+            tree.AddForce(new Vector3(-1.5f + (i % 3) * 1.1f, 0f, 2.4f) * tree.mass, ForceMode.Impulse);
+            tree.AddTorque(new Vector3(0.9f, 0.2f, i % 2 == 0 ? 4.5f : -4.5f) * tree.mass, ForceMode.Impulse);
+        }
+        for (int i = 0; i < landslideStructure.Count; i++)
+        {
+            Rigidbody panel = landslideStructure[i];
+            if (panel == null || !panel.isKinematic || elapsed < landslideStructureReleaseTimes[i])
+                continue;
+            panel.useGravity = true;
+            panel.isKinematic = false;
+            panel.AddForce(new Vector3(-1.8f, 0.9f, 2.8f) * panel.mass, ForceMode.Impulse);
+            panel.AddTorque(new Vector3(2.6f, 0.7f, 1.4f) * panel.mass, ForceMode.Impulse);
+        }
+
+        int burst = elapsed < 0.7f ? -1 : elapsed < 2.4f ? 0 : elapsed < 4.6f ? 1 : elapsed < 7.0f ? 2 : 3;
+        if (burst > lastLandslideDustBurst && landslideDust != null)
+        {
+            lastLandslideDustBurst = burst;
+            float dustZ = -11f + burst * 4f;
+            landslideDust.transform.position = new Vector3((burst - 1) * 1.2f,
+                LandslideSlopeHeight(0f, dustZ) + 1.1f, dustZ);
+            landslideDust.Emit(110 + burst * 35);
+        }
+    }
+
     private void BuildFloodHouse(Material wall, Material roof, Material wood, Material concrete,
         Material safeMat)
     {
@@ -237,10 +1043,44 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         const float houseWallHeight = 5.35f;
         CreateBox("Sel Evi Arka Duvarı", new Vector3(-7f, houseWallHeight * 0.5f, back),
             new Vector3(8f, houseWallHeight, 0.25f), wall);
+        // Upper-floor window on the opposite side wall from the first placement.
+        const float sideWindowWidth = 2.6f;
+        const float sideWindowBottom = 3.55f;
+        const float sideWindowTop = 4.9f;
+        const float sideWindowCenterZ = 0.35f;
         CreateBox("Sel Evi Sol Duvarı", new Vector3(left, houseWallHeight * 0.5f, -2f),
             new Vector3(0.25f, houseWallHeight, 8f), wall);
-        CreateBox("Sel Evi Sağ Duvarı", new Vector3(right, houseWallHeight * 0.5f, -2f),
-            new Vector3(0.25f, houseWallHeight, 8f), wall);
+        CreateBox("Sel Evi Sağ Duvarı Alt Bölüm", new Vector3(right, sideWindowBottom * 0.5f, -2f),
+            new Vector3(0.25f, sideWindowBottom, 8f), wall);
+        CreateBox("Sel Evi Sağ Duvarı Üst Bölüm", new Vector3(right, (sideWindowTop + houseWallHeight) * 0.5f, -2f),
+            new Vector3(0.25f, houseWallHeight - sideWindowTop, 8f), wall);
+        float sideWallBackWidth = sideWindowCenterZ - sideWindowWidth * 0.5f - back;
+        float sideWallFrontWidth = front - (sideWindowCenterZ + sideWindowWidth * 0.5f);
+        CreateBox("Sel Evi Sağ Duvarı Arka Pencere Yanı", new Vector3(right, (sideWindowBottom + sideWindowTop) * 0.5f, back + sideWallBackWidth * 0.5f),
+            new Vector3(0.25f, sideWindowTop - sideWindowBottom, sideWallBackWidth), wall);
+        CreateBox("Sel Evi Sağ Duvarı Ön Pencere Yanı", new Vector3(right, (sideWindowBottom + sideWindowTop) * 0.5f, sideWindowCenterZ + sideWindowWidth * 0.5f + sideWallFrontWidth * 0.5f),
+            new Vector3(0.25f, sideWindowTop - sideWindowBottom, sideWallFrontWidth), wall);
+        Material sideWindowGlass = MakeMaterial("Sel Evi Yan Pencere Camı", new Color32(105, 166, 190, 72));
+        sideWindowGlass.SetOverrideTag("RenderType", "Transparent");
+        if (sideWindowGlass.HasProperty("_Surface"))
+            sideWindowGlass.SetFloat("_Surface", 1f);
+        sideWindowGlass.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        sideWindowGlass.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        sideWindowGlass.SetInt("_ZWrite", 0);
+        sideWindowGlass.DisableKeyword("_ALPHATEST_ON");
+        sideWindowGlass.EnableKeyword("_ALPHABLEND_ON");
+        sideWindowGlass.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        sideWindowGlass.renderQueue = 3000;
+        CreateBox("Sel Evi Yan Pencere Camı", new Vector3(right - 0.12f, (sideWindowBottom + sideWindowTop) * 0.5f, sideWindowCenterZ),
+            new Vector3(0.045f, sideWindowTop - sideWindowBottom, sideWindowWidth), sideWindowGlass);
+        CreateBox("Sel Evi Yan Pencere Üst Çerçevesi", new Vector3(right - 0.08f, sideWindowTop, sideWindowCenterZ),
+            new Vector3(0.16f, 0.1f, sideWindowWidth + 0.18f), wood);
+        CreateBox("Sel Evi Yan Pencere Alt Çerçevesi", new Vector3(right - 0.08f, sideWindowBottom, sideWindowCenterZ),
+            new Vector3(0.16f, 0.1f, sideWindowWidth + 0.18f), wood);
+        for (int pane = -1; pane <= 1; pane += 2)
+            CreateBox("Sel Evi Yan Pencere Dikey Bölmesi " + pane,
+                new Vector3(right - 0.055f, (sideWindowBottom + sideWindowTop) * 0.5f, sideWindowCenterZ + pane * sideWindowWidth * 0.25f),
+                new Vector3(0.08f, sideWindowTop - sideWindowBottom, 0.055f), wood);
         CreateBox("Sel Evi Ön Duvarı Sol", new Vector3(-9.55f, houseWallHeight * 0.5f, front),
             new Vector3(2.9f, houseWallHeight, 0.25f), wall);
         CreateBox("Sel Evi Ön Duvarı Sağ", new Vector3(-4.45f, houseWallHeight * 0.5f, front),
@@ -252,7 +1092,6 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         CreateBox("Sel Evi Üst Kat Döşemesi Ön", new Vector3(-7f, 2.78f, 0.4f), new Vector3(8f, 0.22f, 3.2f), wood);
         CreateBox("Sel Evi Üst Kat Döşemesi Arka", new Vector3(-7f, 2.78f, -5.85f), new Vector3(8f, 0.22f, 0.3f), wood);
         CreateBox("Sel Evi Kırma Çatı", new Vector3(-7f, 5.15f, -2f), new Vector3(8.8f, 0.35f, 8.8f), roof);
-        CreateBox("Sel Evi Üst Kat Pencere Altlığı", new Vector3(-7f, 3.55f, -5.84f), new Vector3(2.1f, 0.15f, 0.35f), wood);
         CreateBox("Üst Kat Güvenli Alan İşareti", new Vector3(-7f, 2.91f, -2f), new Vector3(2.4f, 0.035f, 2.4f), safeMat);
         BuildFloodEntryDoor(wood, concrete);
         BuildFloodStairs(wood, safeMat);
@@ -271,21 +1110,40 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             new Vector3(2.2f, 0.14f, 0.28f), trim);
 
         GameObject hinge = new GameObject("Giriş Kapısı Menteşesi");
-        hinge.transform.position = new Vector3(-7.96f, 0.04f, 1.94f);
+        hinge.transform.position = new Vector3(-7.97f, 0f, 1.94f);
         // Keep the door shut and square in the frame; the previous yaw left a visible wedge-shaped gap.
         hinge.transform.rotation = Quaternion.identity;
         GameObject leaf = CreateChildBox(hinge.transform, "Ahşap Giriş Kapısı Kanadı",
-            new Vector3(0.95f, 1.0f, 0f), new Vector3(1.90f, 2.0f, 0.12f), wood);
+            new Vector3(0.97f, 1.04f, 0f), new Vector3(1.94f, 2.08f, 0.12f),
+            MakeMaterial("Giriş Kapısı Ceviz Ahşabı", new Color32(119, 78, 52, 255)));
         Collider leafCollider = leaf.GetComponent<Collider>();
         if (leafCollider != null) leafCollider.enabled = false;
-        GameObject inset = CreateChildBox(leaf.transform, "Kapı İç Paneli",
-            new Vector3(0f, 0f, -0.60f), new Vector3(0.776f, 0.76f, 0.208f),
-            MakeMaterial("Kapı İç Ahşap Panel", new Color32(111, 73, 48, 255)));
-        Collider insetCollider = inset.GetComponent<Collider>();
-        if (insetCollider != null) insetCollider.enabled = false;
+        Material panelMat = MakeMaterial("Kapı İç Ahşap Panel", new Color32(91, 57, 39, 255));
+        for (int panel = -1; panel <= 1; panel += 2)
+        {
+            GameObject inset = CreateChildBox(leaf.transform, "Kapı " + (panel > 0 ? "Üst" : "Alt") + " Göbek Paneli",
+                new Vector3(0f, panel * 0.27f, -0.57f), new Vector3(0.66f, 0.245f, 0.20f), panelMat);
+            Collider insetCollider = inset.GetComponent<Collider>();
+            if (insetCollider != null) insetCollider.enabled = false;
+        }
+
+        Material hingeMetal = MakeMaterial("Kapı Menteşe Metali", new Color32(77, 83, 79, 255));
+        for (int hingeIndex = 0; hingeIndex < 3; hingeIndex++)
+        {
+            GameObject doorHinge = CreateChildBox(leaf.transform, "Kapı Menteşesi " + (hingeIndex + 1),
+                new Vector3(-0.455f, -0.36f + hingeIndex * 0.36f, -0.64f),
+                new Vector3(0.045f, 0.075f, 0.20f), hingeMetal);
+            Collider doorHingeCollider = doorHinge.GetComponent<Collider>();
+            if (doorHingeCollider != null) doorHingeCollider.enabled = false;
+        }
+
+        Material brass = MakeMaterial("Kapı Kolu Pirinç", new Color32(188, 151, 81, 255));
+        GameObject handlePlate = CreateChildBox(leaf.transform, "Giriş Kapısı Kol Rozeti",
+            new Vector3(0.405f, 0f, -0.66f), new Vector3(0.09f, 0.105f, 0.18f), brass);
+        Collider handlePlateCollider = handlePlate.GetComponent<Collider>();
+        if (handlePlateCollider != null) handlePlateCollider.enabled = false;
         GameObject knob = CreateChildBox(leaf.transform, "Giriş Kapısı Pirinç Kolu",
-            new Vector3(0.372f, 0.48f, -0.767f), new Vector3(0.037f, 0.035f, 0.417f),
-            MakeMaterial("Kapı Kolu Pirinç", new Color32(188, 151, 81, 255)));
+            new Vector3(0.405f, 0f, -0.83f), new Vector3(0.09f, 0.045f, 0.35f), brass);
         Collider knobCollider = knob.GetComponent<Collider>();
         if (knobCollider != null) knobCollider.enabled = false;
     }
@@ -332,7 +1190,9 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         Material door = MakeMaterial("Sel Mahallesi Kapısı", new Color32(92, 62, 43, 255));
         for (int i = 0; i < 5; i++)
         {
-            float x = -1f + i * 6.3f;
+            // Keep the first roadside house clear of the flood-house rear corner while
+            // keeping the row evenly spaced and fully supported by the enlarged ground.
+            float x = (i == 0 ? 0.5f : -1f + i * 6.3f);
             float height = 3.0f + (i % 3) * 0.6f;
             CreateBox("Mahalle Evi " + (i + 1), new Vector3(x, height * 0.5f, -7.8f),
                 new Vector3(4.3f, height, 4.1f), i % 2 == 0 ? wall : concrete);
@@ -360,27 +1220,101 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             CreateBox("Sokak Lambası Başlığı " + (i + 1), new Vector3(x + 0.45f, 4.0f, 5.8f),
                 new Vector3(1.0f, 0.14f, 0.26f), concrete);
         }
-        CreateBox("Park Edilmiş Araç Gövdesi", new Vector3(2f, 0.65f, 5f), new Vector3(3.4f, 1.1f, 1.6f),
-            MakeMaterial("Araç Koyu Mavi", new Color32(49, 78, 93, 255)));
-        CreateBox("Araç Üst Kabini", new Vector3(2f, 1.25f, 5f), new Vector3(1.8f, 0.72f, 1.42f),
-            MakeMaterial("Araç Camı", new Color32(104, 136, 145, 255)));
-        Material tireMaterial = MakeMaterial("Araç Lastiği", new Color32(38, 43, 44, 255));
-        Material hubMaterial = MakeMaterial("Araç Jantı", new Color32(166, 171, 163, 255));
+        Material carPaint = MakeMaterial("Araç Gövde Boyası", new Color32(55, 91, 111, 255));
+        Material carTrim = MakeMaterial("Araç Tampon ve Izgara", new Color32(37, 46, 50, 255));
+        Material carGlass = MakeMaterial("Araç Koyu Cam", new Color32(49, 83, 94, 255));
+        Material carChrome = MakeMaterial("Araç Metal Ayrıntı", new Color32(174, 184, 178, 255));
+        Material headlight = MakeMaterial("Araç Far Camı", new Color32(235, 215, 151, 255));
+        Material tailLight = MakeMaterial("Araç Stop Lambası", new Color32(174, 54, 45, 255));
+        GameObject CreateCarDetail(string name, Vector3 position, Vector3 size, Material material)
+        {
+            GameObject detail = CreateBox(name, position, size, material);
+            Collider detailCollider = detail.GetComponent<Collider>();
+            if (detailCollider != null)
+                detailCollider.enabled = false;
+            return detail;
+        }
+
+        // Park between two streetlights and keep the full vehicle on the road.
+        // All model pieces share this offset so the car stays assembled.
+        const float carOffsetX = 0.79f;
+        const float carOffsetZ = -0.66f;
+        Vector3 CarPosition(Vector3 position) => position + new Vector3(carOffsetX, 0f, carOffsetZ);
+        // The car is aligned along X: front at +X, rear at -X.
+        CreateCarDetail("Park Edilmiş Araç Alt Gövdesi", CarPosition(new Vector3(2f, 0.62f, 5f)), new Vector3(3.7f, 0.82f, 1.72f), carPaint);
+        CreateCarDetail("Araç Kaputu", CarPosition(new Vector3(2.95f, 1.02f, 5f)), new Vector3(1.45f, 0.24f, 1.62f), carPaint);
+        CreateCarDetail("Araç Bagajı", CarPosition(new Vector3(0.95f, 0.98f, 5f)), new Vector3(0.92f, 0.20f, 1.62f), carPaint);
+        CreateCarDetail("Araç Ön Tamponu", CarPosition(new Vector3(3.88f, 0.48f, 5f)), new Vector3(0.16f, 0.22f, 1.68f), carTrim);
+        CreateCarDetail("Araç Arka Tamponu", CarPosition(new Vector3(0.12f, 0.48f, 5f)), new Vector3(0.16f, 0.22f, 1.68f), carTrim);
+        CreateCarDetail("Araç Ön Izgarası", CarPosition(new Vector3(3.89f, 0.70f, 5f)), new Vector3(0.045f, 0.28f, 0.62f), carTrim);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            CreateCarDetail("Araç Ön Far " + side, CarPosition(new Vector3(3.895f, 0.84f, 5f + side * 0.53f)),
+                new Vector3(0.055f, 0.17f, 0.25f), headlight);
+            CreateCarDetail("Araç Arka Stop Lambası " + side, CarPosition(new Vector3(0.105f, 0.82f, 5f + side * 0.53f)),
+                new Vector3(0.055f, 0.20f, 0.24f), tailLight);
+            CreateCarDetail("Araç Yan Basamağı " + side, CarPosition(new Vector3(2f, 0.34f, 5f + side * 0.86f)),
+                new Vector3(2.15f, 0.12f, 0.10f), carTrim);
+            CreateCarDetail("Araç Yan Ayna " + side, CarPosition(new Vector3(2.83f, 1.27f, 5f + side * 0.82f)),
+                new Vector3(0.24f, 0.12f, 0.18f), carPaint);
+            for (int doorLine = 0; doorLine < 3; doorLine++)
+            {
+                float x = doorLine == 0 ? 1.05f : doorLine == 1 ? 2.08f : 3.02f;
+                CreateCarDetail("Araç Kapı Panel Çizgisi " + side + " " + doorLine,
+                    CarPosition(new Vector3(x, 0.66f, 5f + side * 0.866f)), new Vector3(0.025f, 0.48f, 0.018f), carTrim);
+            }
+            CreateCarDetail("Araç Kapı Kolu " + side, CarPosition(new Vector3(2.48f, 0.87f, 5f + side * 0.88f)),
+                new Vector3(0.20f, 0.045f, 0.025f), carChrome);
+        }
+
+        // Open, distinct glazing and pillars make the passenger cabin readable from a distance.
+        CreateCarDetail("Araç Kabin Alt Kuşağı", CarPosition(new Vector3(2.03f, 1.08f, 5f)), new Vector3(1.9f, 0.18f, 1.28f), carPaint);
+        CreateCarDetail("Araç Tavanı", CarPosition(new Vector3(2.03f, 1.62f, 5f)), new Vector3(1.48f, 0.13f, 1.18f), carPaint);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            float z = 5f + side * 0.655f;
+            CreateCarDetail("Araç Ön Yan Cam " + side, CarPosition(new Vector3(2.52f, 1.36f, z)), new Vector3(0.74f, 0.38f, 0.045f), carGlass);
+            CreateCarDetail("Araç Arka Yan Cam " + side, CarPosition(new Vector3(1.56f, 1.36f, z)), new Vector3(0.70f, 0.38f, 0.045f), carGlass);
+            CreateCarDetail("Araç Ön Cam Direği " + side, CarPosition(new Vector3(2.94f, 1.36f, 5f + side * 0.62f)), new Vector3(0.09f, 0.53f, 0.09f), carPaint);
+            CreateCarDetail("Araç Arka Cam Direği " + side, CarPosition(new Vector3(1.13f, 1.36f, 5f + side * 0.62f)), new Vector3(0.09f, 0.53f, 0.09f), carPaint);
+            CreateCarDetail("Araç Orta Direği " + side, CarPosition(new Vector3(2.03f, 1.36f, 5f + side * 0.66f)), new Vector3(0.09f, 0.53f, 0.08f), carPaint);
+        }
+        CreateCarDetail("Araç Ön Cam", CarPosition(new Vector3(2.99f, 1.36f, 5f)), new Vector3(0.045f, 0.37f, 1.02f), carGlass);
+        CreateCarDetail("Araç Arka Cam", CarPosition(new Vector3(1.07f, 1.36f, 5f)), new Vector3(0.045f, 0.37f, 1.02f), carGlass);
+        GameObject carCollisionBody = new GameObject("Park Edilmiş Araç Çarpışma Gövdesi");
+        carCollisionBody.transform.position = CarPosition(new Vector3(2f, 0.82f, 5f));
+        carCollisionBody.AddComponent<BoxCollider>().size = new Vector3(3.7f, 1.3f, 1.72f);
+
+        Material tireMaterial = MakeMaterial("Araç Lastiği", new Color32(31, 35, 37, 255));
+        Material hubMaterial = MakeMaterial("Araç Jantı", new Color32(157, 168, 168, 255));
+        Material hubCenterMaterial = MakeMaterial("Araç Jant Merkezi", new Color32(78, 91, 94, 255));
         for (int xSide = -1; xSide <= 1; xSide += 2)
         for (int zSide = -1; zSide <= 1; zSide += 2)
         {
-            Vector3 wheelPosition = new Vector3(2f + xSide * 1.05f, 0.35f, 5f + zSide * 0.66f);
+            Vector3 wheelPosition = CarPosition(new Vector3(2f + xSide * 1.12f, 0.35f, 5f + zSide * 0.88f));
             GameObject tire = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            tire.name = "Taşkın Mahallesi Araç Lastiği";
+            tire.name = "Taşkın Mahallesi Araç Lastiği " + xSide + " " + zSide;
             tire.transform.SetPositionAndRotation(wheelPosition, Quaternion.Euler(90f, 0f, 0f));
-            tire.transform.localScale = new Vector3(0.34f, 0.14f, 0.34f);
+            tire.transform.localScale = new Vector3(0.62f, 0.20f, 0.62f);
             tire.GetComponent<Renderer>().sharedMaterial = tireMaterial;
             GameObject hub = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            hub.name = "Taşkın Mahallesi Araç Jantı";
-            hub.transform.SetPositionAndRotation(wheelPosition + new Vector3(0f, 0f, zSide * 0.09f),
+            hub.name = "Taşkın Mahallesi Araç Jantı " + xSide + " " + zSide;
+            hub.transform.SetPositionAndRotation(wheelPosition + new Vector3(0f, 0f, zSide * 0.115f),
                 Quaternion.Euler(90f, 0f, 0f));
-            hub.transform.localScale = new Vector3(0.18f, 0.05f, 0.18f);
+            hub.transform.localScale = new Vector3(0.36f, 0.055f, 0.36f);
             hub.GetComponent<Renderer>().sharedMaterial = hubMaterial;
+            Collider hubCollider = hub.GetComponent<Collider>();
+            if (hubCollider != null)
+                hubCollider.enabled = false;
+            GameObject hubCenter = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            hubCenter.name = "Araç Jant Göbeği";
+            hubCenter.transform.SetPositionAndRotation(wheelPosition + new Vector3(0f, 0f, zSide * 0.15f),
+                Quaternion.Euler(90f, 0f, 0f));
+            hubCenter.transform.localScale = new Vector3(0.12f, 0.06f, 0.12f);
+            hubCenter.GetComponent<Renderer>().sharedMaterial = hubCenterMaterial;
+            Collider centerCollider = hubCenter.GetComponent<Collider>();
+            if (centerCollider != null)
+                centerCollider.enabled = false;
         }
         CreateBox("Taşkın Tahliye Yolu", new Vector3(-0.1f, 0.18f, 1.0f), new Vector3(0.8f, 0.24f, 10f),
             MakeMaterial("Yükseltilmiş Yaya Yolu", new Color32(147, 139, 114, 255)));

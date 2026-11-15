@@ -1,12 +1,14 @@
 # Türkiye Afet — Proje Durumu
 
-Son güncelleme: 2026-11-13
+Son güncelleme: 2026-11-15
 
 ## Güncel Özet
 
-Türkçe, 3D afet farkındalığı oyunu. 81 il haritasından il seçilir; seçilen ilin eğitim senaryosu açılır. Deprem ve sel/taşkın akışları birbirinden bağımsız çalışır. Oyun içeriğinin büyük bölümü kodla oluşturulur.
+Türkçe, 3D afet farkındalığı oyunu. 81 il haritasından il seçilir; seçilen ilin eğitim senaryosu açılır. Deprem, sel/taşkın ve heyelan akışları birbirinden bağımsız çalışır. Oyun içeriğinin büyük bölümü kodla oluşturulur.
 
-Kullanıcı son oyun oturumunda sel suyunun en yüksek seviyesine kadar içeride kaldığında boğulma/başarısızlık akışının tetiklendiğini doğruladı. Sonrasında görev metniyle puanın HUD içinde üst üste gelmesi düzeltildi. Kullanıcının son bildirimi: şu an oyunda sorun veya doğrulanmamış bir iş kalemi yok.
+Kullanıcı daha önce sel suyunun en yüksek seviyesinde içeride kalınca boğulma/başarısızlık akışının tetiklendiğini doğruladı; HUD'da görev metniyle puanın üst üste gelmesi de düzeltildi. Bu önceki doğrulama, aşağıdaki yeni heyelan değişikliklerini kapsamaz.
+
+Heyelan senaryosu bu çalışmada baştan ele alındı: tabela tıklama görevleri kaldırıldı, doğal yamaç ve çok aşamalı fizik akışı kuruldu. Kod güncel; Unity Play Mode doğrulamasını kullanıcı yapacak.
 
 ## Teknik Bilgiler
 
@@ -38,6 +40,16 @@ Kullanıcı son oyun oturumunda sel suyunun en yüksek seviyesine kadar içeride
 - Üst kattaki güvenli alanda kesintisiz 2 saniye kalınca tahliye görevi tamamlanır ve 100 puan verilir.
 - Sel sonrası görevlerde 112 ile konum bildirimi ve resmî duyuruyu değerlendirme bulunur.
 
+### Heyelan
+
+- Heyelan, mevcut 81 il haritası ve il bilgi kartının görünümünü/akışını kullanır. Eğitim senaryosu için Bingöl, Erzincan, Gümüşhane, Hakkâri, Tunceli, Bayburt ve Ardahan seçilebilir; bu seçim resmî heyelan risk sınıflaması değildir.
+- Eski büyük düz heyelan duvarı, tehlike şeridi ve üç görev panosu kaldırıldı. Yüksekliği ve yüzeyi değişen özel bir yamaç ağı, düzensiz kaya yüzlekleri, açık toprak katmanları, dağ ağaçları, çalılar, kıvrımlı köy yolu ve yerleşim kurulur. Projede hazır dağ/çevre modeli bulunmadığı için bu alan kodla oluşturulmuş özel mesh ve sahne nesnelerinden oluşur.
+- Afet öncesinde oyuncu zemindeki çatlakları, kökleri açılmış eğik ağacı ve yamaç eteğindeki yeni su sızıntısını dünyada bulup etkileşerek inceler. Hazırlık bitince mevcut bildirimde 5 saniyelik geri sayım görünür.
+- Heyelan 18 saniyelik, farklı zamanlarda başlayan küçük taş, çamur kütlesi ve köşeli kaya dalgalarıyla ilerler. MeshCollider/Convex MeshCollider ve Rigidbody kullanılır; ağaçlar, evin bazı parçaları ve yola inen çamur kütleleri de hareket eder. Dört aşamalı toz parçacığı kullanılır. Ağır çarpma tatbikatı başarısız kılar; küçük taş çarpması puan düşürür.
+- Oyuncu akış hattına paralel/aşağı yönde değil yana doğru kaçıp sahnede belirlenmiş güvenli çayıra ulaşmalı ve 18 saniye boyunca orada kalmalıdır. Güvenli alanda sabit acil çağrı cihazı bulunur. Oyuncu 112 konuşmasında konum/yaklaşım bilgisini ve olası mahsur kişileri bildirir; güvenli alanda kalma ve alana geri dönmeme seçenekleri puanlanır.
+- Senaryo eğitim amaçlıdır; gerçek zamanlı/yerel heyelan uyarısı veya il bazında risk haritası değildir. Kod değişiklikleri kullanıcı tarafından Unity Play Mode'da kontrol edilmedi.
+- İçerik eğitim amaçlıdır; gerçek zamanlı/yerel heyelan uyarısı veya il bazında risk haritası değildir.
+
 ## Harita, Arayüz ve Ses
 
 - 81 il, gerçek il sınırlarıyla seçilebilir. Tamamlanan afet illeri gri gösterilir ve yeniden seçilebilir.
@@ -52,7 +64,8 @@ Kullanıcı son oyun oturumunda sel suyunun en yüksek seviyesine kadar içeride
 - Assets/Scripts/ProvinceManager.cs — İl verileri, afet türü ve tamamlanma kayıtları.
 - Assets/Scripts/ProvinceMapView.cs — Türkiye il haritası etkileşimi.
 - Assets/Scripts/PrototypeBootstrap.cs — Oyun sahnesi, ev, harita senaryosu ve etkileşimli nesneler.
-- Assets/Scripts/PrototypeScenario.cs — Deprem/sel akışları, görevler, puan, su seviyesi ve boğulma sonucu.
+- Assets/Scripts/PrototypeScenario.cs — Deprem/sel/heyelan akışları, görevler, puan, su seviyesi ve boğulma sonucu.
+- Assets/Scripts/PrototypeLandslideDebrisImpact.cs — Heyelan kaya ve toprak kütlelerinin oyuncuya çarpma sonucunu bildirir.
 - Assets/Scripts/PrototypePlayerController.cs — Oyuncu hareketi, kamera, etkileşim ve sel suyunda hareket etkisi.
 - Assets/Scripts/PrototypeUI.cs — Menü, il kartı, görev HUD'ı, geri sayım ve sonuç ekranları.
 - Assets/Scripts/PrototypeAudio.cs — Hareket ve etkileşim sesleri.
@@ -79,6 +92,7 @@ Kullanıcı son oyun oturumunda sel suyunun en yüksek seviyesine kadar içeride
 - AFAD, Deprem öncesi, anı ve sonrası alınabilecek önlemler: https://www.afad.gov.tr/deprem-oncesi-ani-ve-sonrasi-alabileceginiz-onlemleri-biliyor-musunuz
 - AFAD Çanakkale İl Müdürlüğü, Sel: sel öncesi hazırlık, yüksek ve güvenli alana çıkma, hareketli suya girmeme, elektrik tehlikesi ve sel sonrası güvenli dönüş bilgileri: https://canakkale.afad.gov.tr/sel
 - AFAD Antalya İl Müdürlüğü, Şiddetli Yağış ve Selden Korunma: değerli eşya ve belgeleri yükseltme, elektrik/doğalgazı güvenli biçimde kapatma, sel sırasında yüksek yere çıkma ve su çekildikten sonra tedbirli olma: https://antalya.afad.gov.tr/siddetli-yagis-ve-selden-korunma
+- AFAD Hazırım, Heyelan İçin Hazırlık Rehberi: heyelan belirtilerini tanıma ve bildirme, akış hattına dik yönde uzaklaşma, kapalı alanda güvenli davranma ve olay sonrası resmî ekipleri bekleme: https://hazirim.gov.tr/tr/afetler/heyelan
 - AFAD Güvenli Yaşam 1 Eğitim Kitapçığı, Sel/Taşkında Kendinizi Koruyun (PDF): https://cankiri.afad.gov.tr/kurumlar/cankiri.afad/dOKUMANLAR/Guvenli_Yasam_Klavuzu/gy_1_egitim_kitapcigi.pdf
 - 112 Acil Çağrı Merkezi, Acil Durum Kılavuzu (PDF): sel veya su baskınlarında 112'ye başvuru bilgisi: https://112.gov.tr/kurumlar/112.gov.tr/IcSite/ankara/ACIL_DURUM_KILAVUZU.pdf
 - 112 Acil Çağrı Merkezi, SMS İhbarları: konum/açık adres ve acil durum bilgisini iletme, mümkünse aramanın tercih edilmesi: https://112.gov.tr/112-sms-ihbarlari

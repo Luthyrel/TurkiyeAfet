@@ -15,7 +15,10 @@ public enum PrototypeAction
     RaiseFloodValuables,
     RaiseFloodElectronics,
     CallForFloodHelp,
-    WaitForFloodAllClear
+    WaitForFloodAllClear,
+    InspectLandslideWarnings,
+    ReviewLandslideRoute,
+    CallForLandslideHelp
 }
 
 public sealed class PrototypeInteractable : MonoBehaviour

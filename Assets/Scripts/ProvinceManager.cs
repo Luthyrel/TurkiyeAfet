@@ -31,6 +31,10 @@ public sealed class ProvinceManager : MonoBehaviour
     {
         1, 7, 8, 16, 22, 28, 33, 34, 35, 37, 39, 52, 53, 55, 57, 59, 61, 67, 74, 81
     };
+    private static readonly HashSet<int> LandslideTrainingPlates = new HashSet<int>
+    {
+        12, 24, 29, 30, 62, 69, 75
+    };
 
     public static ProvinceManager Instance { get; private set; }
 
@@ -41,12 +45,23 @@ public sealed class ProvinceManager : MonoBehaviour
     public ProvinceInfo SelectedProvince { get; private set; }
 
     public bool IsFloodProvince(int plateCode) => FloodProvincePlates.Contains(plateCode);
+    public bool IsLandslideTrainingProvince(int plateCode) => LandslideTrainingPlates.Contains(plateCode);
 
     public GameManager.DisasterType GetPrimaryDisasterForProvince(int plateCode)
     {
+        if (IsLandslideTrainingProvince(plateCode))
+            return GameManager.DisasterType.Landslide;
         return IsFloodProvince(plateCode)
             ? GameManager.DisasterType.Flood
             : GameManager.DisasterType.Earthquake;
+    }
+
+    public int GetFirstLandslideTrainingProvincePlate()
+    {
+        foreach (ProvinceInfo province in provinces)
+            if (IsLandslideTrainingProvince(province.plateCode))
+                return province.plateCode;
+        return 24;
     }
 
     public int GetFirstFloodProvincePlate()
@@ -62,14 +77,14 @@ public sealed class ProvinceManager : MonoBehaviour
         if (GetPrimaryDisasterForProvince(plateCode) != disaster)
             return false;
 
-        string name = disaster == GameManager.DisasterType.Flood ? "Sel" : "Deprem";
+        string name = GetDisasterSaveName(disaster);
         bool provinceComplete = PlayerPrefs.GetInt(ProgressKey("TurkiyeAfet." + name + ".Completed", plateCode), 0) == 1;
         return provinceComplete || HasAnyRecordedCompletion(disaster);
     }
 
     private bool HasAnyRecordedCompletion(GameManager.DisasterType disaster)
     {
-        string name = disaster == GameManager.DisasterType.Flood ? "Sel" : "Deprem";
+        string name = GetDisasterSaveName(disaster);
         if (PlayerPrefs.GetInt("TurkiyeAfet." + name + ".Completed", 0) == 1)
             return true;
 
@@ -81,6 +96,16 @@ public sealed class ProvinceManager : MonoBehaviour
         }
         return disaster == GameManager.DisasterType.Earthquake
             && PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) == 1;
+    }
+
+    public static string GetDisasterSaveName(GameManager.DisasterType disaster)
+    {
+        return disaster switch
+        {
+            GameManager.DisasterType.Flood => "Sel",
+            GameManager.DisasterType.Landslide => "Heyelan",
+            _ => "Deprem"
+        };
     }
 
     public void ClearSelection() => SelectedProvince = null;
@@ -176,24 +201,34 @@ public sealed class ProvinceManager : MonoBehaviour
 
     public int GetLastCompletedProvincePlate()
     {
-        bool flood = GameManager.Instance != null
-            && GameManager.Instance.SelectedDisaster == GameManager.DisasterType.Flood;
-        string completedKey = "TurkiyeAfet." + (flood ? "Sel" : "Deprem") + ".Completed";
+        GameManager.DisasterType selectedDisaster = GameManager.Instance != null
+            ? GameManager.Instance.SelectedDisaster : GameManager.DisasterType.Earthquake;
+        string completedKey = "TurkiyeAfet." + GetDisasterSaveName(selectedDisaster) + ".Completed";
         int plate = PlayerPrefs.GetInt("TurkiyeAfet.LastCompletedProvince", GetLastProvincePlate());
         ProvinceInfo recent = GetProvince(plate);
-        if (recent != null && (!flood || IsFloodProvince(plate))
+        if (recent != null && IsProvinceForDisaster(plate, selectedDisaster)
             && PlayerPrefs.GetInt(ProgressKey(completedKey, plate),
-                !flood && plate == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) : 0) == 1)
+                selectedDisaster == GameManager.DisasterType.Earthquake && plate == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) : 0) == 1)
             return plate;
 
         foreach (ProvinceInfo province in provinces)
         {
-            if ((!flood || IsFloodProvince(province.plateCode))
+            if (IsProvinceForDisaster(province.plateCode, selectedDisaster)
                 && PlayerPrefs.GetInt(ProgressKey(completedKey, province.plateCode),
-                    !flood && province.plateCode == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) : 0) == 1)
+                    selectedDisaster == GameManager.DisasterType.Earthquake && province.plateCode == 6 ? PlayerPrefs.GetInt("TurkiyeAfet.Deprem.Completed", 0) : 0) == 1)
                 return province.plateCode;
         }
-        return flood ? GetFirstFloodProvincePlate() : 6;
+        return selectedDisaster switch
+        {
+            GameManager.DisasterType.Flood => GetFirstFloodProvincePlate(),
+            GameManager.DisasterType.Landslide => GetFirstLandslideTrainingProvincePlate(),
+            _ => 6
+        };
+    }
+
+    private bool IsProvinceForDisaster(int plateCode, GameManager.DisasterType disaster)
+    {
+        return GetPrimaryDisasterForProvince(plateCode) == disaster;
     }
 
     public static string ProgressKey(string key, int plateCode)
@@ -205,14 +240,15 @@ public sealed class ProvinceManager : MonoBehaviour
     {
         if (HasAnyCompletedScenario(GameManager.DisasterType.Earthquake))
             return true;
-        return HasAnyCompletedScenario(GameManager.DisasterType.Flood);
+        return HasAnyCompletedScenario(GameManager.DisasterType.Flood)
+            || HasAnyCompletedScenario(GameManager.DisasterType.Landslide);
     }
 
     public bool HasAnyCompletedScenario(GameManager.DisasterType disaster)
     {
         foreach (ProvinceInfo province in provinces)
         {
-            if ((disaster != GameManager.DisasterType.Flood || IsFloodProvince(province.plateCode))
+            if (GetPrimaryDisasterForProvince(province.plateCode) == disaster
                 && IsScenarioCompleted(province.plateCode, disaster))
                 return true;
         }
@@ -228,11 +264,13 @@ public sealed class ProvinceManager : MonoBehaviour
         {
             PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Deprem.Completed", plate));
             PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Sel.Completed", plate));
+            PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Heyelan.Completed", plate));
         }
 
         // Clear the older hazard-wide completion flags too; keep scores and other preferences.
         PlayerPrefs.DeleteKey("TurkiyeAfet.Deprem.Completed");
         PlayerPrefs.DeleteKey("TurkiyeAfet.Sel.Completed");
+        PlayerPrefs.DeleteKey("TurkiyeAfet.Heyelan.Completed");
         PlayerPrefs.Save();
     }
 }

@@ -173,6 +173,12 @@ public sealed class PrototypeAudio : MonoBehaviour
         Instance.PlayOneShot(Instance.debrisFall, 0.5f, 0.94f, 1.06f);
     }
 
+    public static void PlayLandslide()
+    {
+        if (Instance != null)
+            Instance.PlayOneShot(Instance.debrisFall, 0.30f, 0.86f, 0.96f);
+    }
+
     public static void SetMovement(bool moving, bool running, bool crouched)
     {
         if (Instance == null || Instance.movementSource == null)

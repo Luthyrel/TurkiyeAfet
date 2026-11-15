@@ -877,7 +877,14 @@ public sealed class PrototypePlayerController : MonoBehaviour
         if (scenario == null || PrototypeBootstrap.Instance == null)
             return;
 
-        if (scenario.IsFloodScenario && (scenario.IsFlooding
+        if (scenario.IsLandslideActive)
+        {
+            PrototypeBootstrap.Instance.SetPrompt(scenario.IsLandslideEvacuated
+                ? "Güvenli alanda kal; heyelan geçene kadar bekle."
+                : "Akış hattına dik yönde ilerle; yeşil güvenli alana koş.");
+            return;
+        }
+        else if (scenario.IsFloodScenario && (scenario.IsFlooding
             || (scenario.CurrentPhase == PrototypeScenario.Phase.Aftershock && !scenario.IsFloodEvacuated)
             || scenario.IsPlayerInFloodWater))
         {
@@ -965,7 +972,15 @@ public sealed class PrototypePlayerController : MonoBehaviour
         Vector3 targetPosition;
         string targetName;
         string action;
-        if (scenario.IsFloodScenario && (scenario.IsFlooding
+        if (scenario.IsLandslideActive)
+        {
+            targetPosition = scenario.LandslideSafePosition;
+            targetName = "Güvenli yan alan";
+            action = scenario.IsLandslideEvacuated
+                ? "Güvenli alanda kal"
+                : "Akış hattına dik yönde yeşil alana koş";
+        }
+        else if (scenario.IsFloodScenario && (scenario.IsFlooding
             || (scenario.CurrentPhase == PrototypeScenario.Phase.Aftershock && !scenario.IsFloodEvacuated)))
         {
             targetPosition = scenario.FloodSafePosition;
