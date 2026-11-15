@@ -1640,12 +1640,12 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
         if (stormPowerPolePivot != null)
         {
-            float fall = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(13.5f, 20.5f, elapsed));
+            float fall = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(13.5f, 16f, elapsed));
             float sway = Mathf.Sin(elapsed * 2.1f) * (1.8f + gust * 3.1f);
             stormPowerPolePivot.localRotation = Quaternion.Euler(0f, 0f, sway + fall * 56f);
         }
 
-        bool postEventVisible = elapsed >= 20.5f;
+        bool postEventVisible = elapsed >= 16f;
         for (int i = 0; i < stormPostEventObjects.Count; i++)
         {
             GameObject item = stormPostEventObjects[i];
@@ -1907,6 +1907,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             panelBody.isKinematic = true;
             panelBody.useGravity = false;
             panelBody.mass = 180f;
+            frontPanel.AddComponent<PrototypeLandslideDebrisImpact>();
             landslideStructure.Add(panelBody);
             landslideStructureReleaseTimes.Add(7.1f);
             CreateBox("Heyelan Riski Altındaki Evin Penceresi", center + new Vector3(0.65f, 1.9f, depth * 0.5f + 0.1f),
@@ -1917,6 +1918,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             roofBody.isKinematic = true;
             roofBody.useGravity = false;
             roofBody.mass = 110f;
+            roofPanel.AddComponent<PrototypeLandslideDebrisImpact>();
             landslideStructure.Add(roofBody);
             landslideStructureReleaseTimes.Add(8.0f);
         }
@@ -2015,6 +2017,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         capsule.radius = width * 1.2f;
         if (canFall)
         {
+            tree.AddComponent<PrototypeLandslideDebrisImpact>();
             landslideTrees.Add(body);
             landslideTreeReleaseTimes.Add(4.5f + (variation % 4) * 0.85f);
         }

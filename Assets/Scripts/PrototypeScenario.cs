@@ -120,6 +120,7 @@ public sealed class PrototypeScenario : MonoBehaviour
     private int wildfirePreparationIndex;
     private bool wildfireScenario;
     private bool wildfireEvacuated;
+    private bool wildfireSafeBonusAwarded;
     private float wildfireTimer;
     private float wildfireSafeHoldTimer;
     private Vector3 wildfireSafeCenter = new Vector3(17f, 0f, 7f);
@@ -1381,6 +1382,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         wildfireTimer = 0f;
         wildfireSafeHoldTimer = 0f;
         wildfireEvacuated = false;
+        wildfireSafeBonusAwarded = false;
         GameManager.Instance?.StartScenario();
         bootstrap.BeginWildfireVisual();
         bootstrap.ShowNotice("Orman yangını başladı. Alevlere yaklaşma veya söndürmeye çalışma; açık tahliye patikasından yeşil fenerli toplanma alanına git.");
@@ -1543,9 +1545,17 @@ public sealed class PrototypeScenario : MonoBehaviour
                 {
                     wildfireEvacuated = true;
                     wildfireSafeHoldTimer = 0f;
-                    Score += 150;
-                    PrototypeAudio.PlayTaskComplete();
-                    bootstrap.ShowNotice("Açık toplanma alanına ulaştın. Burada kal, yangın bölgesine geri dönme ve ekiplerin yönlendirmesini bekle. +150 puan.");
+                    if (!wildfireSafeBonusAwarded)
+                    {
+                        wildfireSafeBonusAwarded = true;
+                        Score += 150;
+                        PrototypeAudio.PlayTaskComplete();
+                        bootstrap.ShowNotice("Açık toplanma alanına ulaştın. Burada kal, yangın bölgesine geri dönme ve ekiplerin yönlendirmesini bekle. +150 puan.");
+                    }
+                    else
+                    {
+                        bootstrap.ShowNotice("Güvenli alana geri döndün. Üç saniye boyunca burada kal ve ekiplerin yönlendirmesini bekle.");
+                    }
                 }
                 wildfireSafeHoldTimer += Time.deltaTime;
                 if (wildfireSafeHoldTimer >= WildfireSafeHoldDuration)
@@ -1832,7 +1842,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (player == null)
             return false;
         Vector3 offset = player.transform.position - landslideSafeCenter;
-        return Mathf.Abs(offset.x) <= 2.35f && Mathf.Abs(offset.z) <= 2.5f
+        return offset.x * offset.x + offset.z * offset.z <= 3.3f * 3.3f
             && player.transform.position.y >= landslideSafeCenter.y - 0.35f;
     }
 
