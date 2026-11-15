@@ -33,6 +33,9 @@ public sealed class PrototypeUI : MonoBehaviour
     private Text introScenarioTitle;
     private Text introScenarioInfo;
     private Text quakeStartHint;
+    private RectTransform landslideDirectionArrowRect;
+    private Transform landslideWorldArrow;
+    private Renderer landslideWorldArrowRenderer;
     private RectTransform targetGuideRect;
     private Text targetGuideText;
     private GameObject trappedOverlay;
@@ -261,6 +264,10 @@ public sealed class PrototypeUI : MonoBehaviour
         quakeStartHint = AddText(hudPage.transform, "Deprem Geri Sayımı", "",
             new Vector2(0.70f, 0.86f), new Vector2(0.98f, 0.94f), 17,
             new Color32(255, 225, 164, 255), TextAnchor.MiddleRight);
+        landslideDirectionArrowRect = MakeRect(hudPage.transform, "Heyelan Güvenli Alan Yön Oku",
+            new Vector2(0.5f, 0.12f), new Vector2(0.5f, 0.12f), Vector2.zero, new Vector2(96f, 72f), new Color32(10, 20, 32, 210));
+        AddText(landslideDirectionArrowRect, "Yön Oku", "▲", Vector2.zero, Vector2.one, 58, new Color32(94, 235, 195, 255), TextAnchor.MiddleCenter);
+        landslideDirectionArrowRect.gameObject.SetActive(false);
 
         targetGuideRect = MakeRect(hudPage.transform, "Aktif Görev Yön İşareti",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(250f, 42f),
@@ -587,13 +594,96 @@ public sealed class PrototypeUI : MonoBehaviour
             hudPanelRect.sizeDelta = new Vector2(430f, Mathf.Clamp(requiredPanelHeight, 300f, 560f));
         }
         scoreText.text = "PUAN   " + score;
-        bool floodCountdown = owner != null && owner.Scenario != null && owner.Scenario.IsFloodScenario;
-        if (!floodCountdown && preparationCountdown > 0.05f)
+        PrototypeScenario currentScenario = owner != null ? owner.Scenario : null;
+        if (preparationCountdown > 0.05f && currentScenario != null && !currentScenario.IsLandslideScenario)
         {
-            quakeStartHint.text = "DEPREM " + Mathf.CeilToInt(preparationCountdown) + " SANİYE İÇİNDE BAŞLIYOR";
+            string disasterName = currentScenario.IsFloodScenario ? "SEL " : "DEPREM ";
+            quakeStartHint.text = disasterName + Mathf.CeilToInt(preparationCountdown) + " SANİYE İÇİNDE BAŞLIYOR";
         }
         else
             quakeStartHint.text = string.Empty;
+    }
+
+    public void SetLandslideDirectionArrow(bool visible, Vector3 targetPosition)
+    {
+        if (landslideDirectionArrowRect != null)
+            landslideDirectionArrowRect.gameObject.SetActive(false);
+        Camera camera = Camera.main;
+        if (camera == null) return;
+        if (landslideWorldArrow == null)
+            CreateLandslideWorldArrow(camera.transform);
+        if (landslideWorldArrow.parent != camera.transform)
+            landslideWorldArrow.SetParent(camera.transform, false);
+        landslideWorldArrow.localPosition = new Vector3(0f, -0.43f, 1.35f);
+        if (landslideWorldArrowRenderer != null)
+            landslideWorldArrowRenderer.enabled = visible;
+        if (!visible) return;
+
+        // Use compass bearing on the ground plane. Camera pitch and the safe-zone
+        // elevation must not make the direction indicator swing up or down.
+        Vector3 toTarget = targetPosition - camera.transform.position;
+        toTarget.y = 0f;
+        Vector3 horizontalForward = camera.transform.forward;
+        horizontalForward.y = 0f;
+        Vector3 horizontalRight = camera.transform.right;
+        horizontalRight.y = 0f;
+        if (horizontalForward.sqrMagnitude > 0.0001f) horizontalForward.Normalize();
+        if (horizontalRight.sqrMagnitude > 0.0001f) horizontalRight.Normalize();
+        Vector2 projected = new Vector2(Vector3.Dot(toTarget, horizontalRight),
+            Vector3.Dot(toTarget, horizontalForward));
+        if (projected.sqrMagnitude < 0.0001f) projected = Vector2.up;
+        float angle = Mathf.Atan2(projected.y, projected.x) * Mathf.Rad2Deg - 90f;
+        landslideWorldArrow.localRotation = Quaternion.Euler(0f, 0f, angle);
+    }
+
+    private void CreateLandslideWorldArrow(Transform cameraTransform)
+    {
+        GameObject arrow = new GameObject("3B Heyelan Güvenli Alan Oku");
+        arrow.transform.SetParent(cameraTransform, false);
+        Mesh mesh = new Mesh { name = "Kabartmalı Yön Oku" };
+        Vector2[] outline =
+        {
+            new Vector2(-0.11f, -0.32f), new Vector2(0.11f, -0.32f),
+            new Vector2(0.11f, 0.04f), new Vector2(0.29f, 0.04f),
+            new Vector2(0f, 0.43f), new Vector2(-0.29f, 0.04f),
+            new Vector2(-0.11f, 0.04f)
+        };
+        Vector3[] vertices = new Vector3[16];
+        for (int i = 0; i < 7; i++)
+        {
+            vertices[i] = new Vector3(outline[i].x, outline[i].y, -0.035f);
+            vertices[i + 8] = new Vector3(outline[i].x, outline[i].y, 0.035f);
+        }
+        vertices[7] = new Vector3(0f, 0.02f, -0.035f);
+        vertices[15] = new Vector3(0f, 0.02f, 0.035f);
+        int[] triangles = new int[7 * 3 * 2 + 7 * 6];
+        int t = 0;
+        for (int i = 0; i < 7; i++)
+        {
+            int next = (i + 1) % 7;
+            triangles[t++] = 7; triangles[t++] = i; triangles[t++] = next;
+            triangles[t++] = 15; triangles[t++] = next + 8; triangles[t++] = i + 8;
+            triangles[t++] = i; triangles[t++] = i + 8; triangles[t++] = next + 8;
+            triangles[t++] = i; triangles[t++] = next + 8; triangles[t++] = next;
+        }
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        arrow.AddComponent<MeshFilter>().sharedMesh = mesh;
+        MeshRenderer meshRenderer = arrow.AddComponent<MeshRenderer>();
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null) shader = Shader.Find("Unlit/Color");
+        if (shader != null)
+        {
+            Material material = new Material(shader);
+            material.name = "Heyelan Oku - Fosforlu Turkuaz";
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", new Color32(73, 255, 210, 255));
+            else if (material.HasProperty("_Color")) material.SetColor("_Color", new Color32(73, 255, 210, 255));
+            meshRenderer.sharedMaterial = material;
+        }
+        landslideWorldArrow = arrow.transform;
+        landslideWorldArrowRenderer = meshRenderer;
     }
 
     public void UpdateTargetGuide(Camera camera, Vector3 targetPosition, bool unobstructed,

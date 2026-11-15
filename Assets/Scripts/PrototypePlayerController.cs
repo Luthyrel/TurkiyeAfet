@@ -969,6 +969,12 @@ public sealed class PrototypePlayerController : MonoBehaviour
             return;
         }
 
+        if (scenario.IsLandslideActive)
+        {
+            PrototypeBootstrap.Instance.HideTargetGuide();
+            return;
+        }
+
         Vector3 targetPosition;
         string targetName;
         string action;

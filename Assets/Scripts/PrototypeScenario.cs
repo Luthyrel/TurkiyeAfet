@@ -1537,6 +1537,7 @@ public sealed class PrototypeScenario : MonoBehaviour
             string responseTask = CurrentPhase == Phase.Aftershock
                 ? "○ Acil cihazdan 112'yi ara; konum ve olası mahsurları bildir"
                 : CurrentPhase == Phase.Completed ? "✓ 112'ye doğru bilgi ver; alana geri dönme" : "";
+            bootstrap.SetLandslideDirectionArrow(CurrentPhase == Phase.Landslide && !landslideEvacuated, landslideSafeCenter);
             bootstrap.RefreshHud(phase, landslideTasks, safeTask, "", "", responseTask, Score, 0f);
             return;
         }

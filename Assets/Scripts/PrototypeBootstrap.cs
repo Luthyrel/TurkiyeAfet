@@ -421,7 +421,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private void CreateLandslideSlopePatch(string name, Vector2 center, float radiusX, float radiusZ,
         Material material, int seed, float lift)
     {
-        const int segments = 11;
+        const int segments = 20;
         Vector3[] vertices = new Vector3[segments + 1];
         int[] triangles = new int[segments * 3];
         vertices[0] = new Vector3(center.x, LandslideSlopeHeight(center.x, center.y) + lift, center.y);
@@ -644,24 +644,27 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         crackCollider.size = new Vector3(1.8f, 0.32f, 1.5f);
         PrototypeInteractable crackTask = cracks.AddComponent<PrototypeInteractable>();
         crackTask.Configure(PrototypeAction.InspectLandslideWarnings, "Genişleyen zemin çatlaklarını incele");
-        Material fissure = MakeMaterial("Zemindeki Koyu Fissürler", new Color32(47, 43, 36, 255));
-        Material rawEdge = MakeMaterial("Çatlak Kenarında Taze Toprak", new Color32(146, 104, 70, 255));
-        for (int line = 0; line < 5; line++)
+        Material fissure = MakeMaterial("Zemindeki Koyu Fissürler", new Color32(35, 29, 24, 255));
+        Material crackedSoil = MakeMaterial("Çatlamış Zeminde Açığa Çıkan Toprak", new Color32(119, 87, 59, 255));
+        CreateLandslideSlopePatch("Çatlakların Çevresindeki Açığa Çıkmış Toprak", new Vector2(crackX, crackZ),
+            1.24f, 0.84f, crackedSoil, 754, 0.018f);
+        float[,] crackSegments =
         {
-            float angle = -12f + line * 9f;
-            float x = -0.48f + line * 0.22f;
-            float crackWorldX = cracks.transform.position.x + x;
-            float crackWorldZ = cracks.transform.position.z + (line % 2 == 0 ? -0.12f : 0.12f);
-            GameObject crack = CreateBox("Düzensiz Çatlak İzi " + line,
-                new Vector3(crackWorldX, LandslideSlopeHeight(crackWorldX, crackWorldZ) + 0.035f, crackWorldZ),
-                new Vector3(1.16f - (line % 3) * 0.12f, 0.035f, 0.045f + (line % 2) * 0.025f), fissure);
-            crack.transform.rotation = Quaternion.Euler(0f, angle, 0f);
-            Collider fissureCollider = crack.GetComponent<Collider>();
+            { -0.66f, -0.37f, 0.55f, 0.085f, -18f }, { -0.28f, -0.22f, 0.62f, 0.090f, 22f },
+            { 0.10f, 0.03f, 0.58f, 0.095f, -20f }, { 0.46f, 0.20f, 0.56f, 0.082f, 25f },
+            { 0.72f, 0.40f, 0.38f, 0.074f, -16f }, { -0.28f, -0.22f, 0.38f, 0.052f, 67f },
+            { 0.46f, 0.20f, 0.34f, 0.048f, -58f }
+        };
+        for (int i = 0; i < crackSegments.GetLength(0); i++)
+        {
+            float x = crackX + crackSegments[i, 0];
+            float z = crackZ + crackSegments[i, 1];
+            GameObject fissureSegment = CreateBox("Geniş Dallanan Zemin Çatlağı " + i,
+                new Vector3(x, LandslideSlopeHeight(x, z) + 0.045f, z),
+                new Vector3(crackSegments[i, 2], 0.04f, crackSegments[i, 3]), fissure);
+            fissureSegment.transform.rotation = Quaternion.Euler(0f, crackSegments[i, 4], 0f);
+            Collider fissureCollider = fissureSegment.GetComponent<Collider>();
             if (fissureCollider != null) fissureCollider.enabled = false;
-            GameObject edge = CreateBox("Çatlak Kenarındaki Açık Toprak " + line,
-                crack.transform.position + new Vector3(-0.075f, 0.012f, 0.05f), new Vector3(0.06f, 0.025f, 0.88f), rawEdge);
-            Collider edgeCollider = edge.GetComponent<Collider>();
-            if (edgeCollider != null) edgeCollider.enabled = false;
         }
         scenario.AddLandslidePreparationTask(crackTask);
 
@@ -682,22 +685,29 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         seepageCollider.size = new Vector3(1.7f, 0.28f, 1.35f);
         PrototypeInteractable seepageTask = seepage.AddComponent<PrototypeInteractable>();
         seepageTask.Configure(PrototypeAction.InspectLandslideWarnings, "Yamaç eteğindeki yeni su sızıntısını incele");
-        CreateLandslideSlopePatch("Sızıntının Islak Toprağı", new Vector2(seepageX, seepageZ), 1.1f, 0.75f, soil, 755, 0.12f);
+        Material wetSoil = MakeMaterial("Sızıntı Çevresi Islak Koyu Toprak", new Color32(70, 59, 47, 255));
+        Material seepWater = MakeMaterial("Parlak Soğuk Yamaç Suyu", new Color32(69, 142, 160, 255));
+        if (seepWater.HasProperty("_Smoothness")) seepWater.SetFloat("_Smoothness", 0.82f);
+        CreateLandslideSlopePatch("Sızıntının Islak Toprağı", new Vector2(seepageX, seepageZ), 0.64f, 0.42f, wetSoil, 755, 0.04f);
         for (int i = 0; i < 4; i++)
         {
             float puddleX = seepageX - 0.3f + i * 0.18f;
             float puddleZ = seepageZ - 0.3f + i * 0.16f;
-            GameObject water = CreateBox("Yamaç Eteğindeki Su Birikintisi " + i,
-                new Vector3(puddleX, LandslideSlopeHeight(puddleX, puddleZ) + 0.035f, puddleZ),
-                new Vector3(0.55f - i * 0.04f, 0.018f, 0.24f), shale);
+            GameObject water = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            water.name = "Yamaç Eteğindeki Parlak Su Birikintisi " + i;
+            water.transform.position = new Vector3(puddleX, LandslideSlopeHeight(puddleX, puddleZ) + 0.045f, puddleZ);
+            water.transform.localScale = new Vector3(0.42f - i * 0.035f, 0.025f, 0.19f + (i % 2) * 0.045f);
+            water.GetComponent<Renderer>().sharedMaterial = seepWater;
             water.transform.rotation = Quaternion.Euler(0f, i * 22f, 0f);
             Collider waterCollider = water.GetComponent<Collider>();
             if (waterCollider != null) waterCollider.enabled = false;
         }
-        GameObject waterTrail = CreateBox("Sızıntıdan Akan İnce Su İzi",
-            new Vector3(3.35f, LandslideSlopeHeight(3.35f, -3.55f) + 0.028f, -3.55f),
-            new Vector3(0.16f, 0.018f, 0.72f), MakeMaterial("Soğuk Yamaç Suyu", new Color32(90, 130, 137, 255)));
+        GameObject waterTrail = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        waterTrail.name = "Sızıntıdan Akan İnce Su İzi";
+        waterTrail.transform.position = new Vector3(3.55f, LandslideSlopeHeight(3.55f, -3.65f) + 0.04f, -3.65f);
+        waterTrail.transform.localScale = new Vector3(0.12f, 0.023f, 0.62f);
         waterTrail.transform.rotation = Quaternion.Euler(0f, 12f, 0f);
+        waterTrail.GetComponent<Renderer>().sharedMaterial = seepWater;
         Collider waterTrailCollider = waterTrail.GetComponent<Collider>();
         if (waterTrailCollider != null) waterTrailCollider.enabled = false;
         scenario.AddLandslidePreparationTask(seepageTask);
@@ -916,6 +926,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     {
         GameObject dustObject = new GameObject("Heyelan Toz ve Toprak Bulutu");
         landslideDust = dustObject.AddComponent<ParticleSystem>();
+        landslideDust.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystem.MainModule main = landslideDust.main;
         main.loop = false;
         main.playOnAwake = false;
@@ -955,12 +966,15 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         {
             LandslideDebrisBody item = landslideDebris[i];
             item.Released = false;
+            if (!item.Body.isKinematic)
+            {
+                item.Body.linearVelocity = Vector3.zero;
+                item.Body.angularVelocity = Vector3.zero;
+            }
             item.Body.isKinematic = true;
             item.Body.useGravity = false;
             item.Body.position = item.StartPosition;
             item.Body.rotation = item.StartRotation;
-            item.Body.linearVelocity = Vector3.zero;
-            item.Body.angularVelocity = Vector3.zero;
         }
         for (int i = 0; i < landslideTrees.Count; i++)
         {
@@ -2066,6 +2080,12 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     {
         if (ui != null)
             ui.HideTargetGuide();
+    }
+
+    public void SetLandslideDirectionArrow(bool visible, Vector3 targetPosition)
+    {
+        if (ui != null)
+            ui.SetLandslideDirectionArrow(visible, targetPosition);
     }
 
     public void SetHoldZoneVisible(bool visible)
