@@ -17,7 +17,9 @@ public class GameManager : MonoBehaviour
     {
         Earthquake,
         Flood,
-        Landslide
+        Landslide,
+        Wildfire,
+        Storm
     }
 
     public GameState CurrentState { get; private set; } = GameState.MainMenu;

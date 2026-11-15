@@ -41,6 +41,7 @@ public sealed class ProvinceMapView : MonoBehaviour
             {
                 GameManager.DisasterType.Flood => ProvinceManager.Instance.GetFirstFloodProvincePlate(),
                 GameManager.DisasterType.Landslide => ProvinceManager.Instance.GetFirstLandslideTrainingProvincePlate(),
+                GameManager.DisasterType.Wildfire => 48,
                 _ => ProvinceManager.Instance.GetLastProvincePlate()
             };
         }
@@ -97,6 +98,7 @@ public sealed class ProvinceMapView : MonoBehaviour
         {
             GameManager.DisasterType.Flood => ProvinceManager.Instance != null ? ProvinceManager.Instance.GetFirstFloodProvincePlate() : 74,
             GameManager.DisasterType.Landslide => ProvinceManager.Instance != null ? ProvinceManager.Instance.GetFirstLandslideTrainingProvincePlate() : 24,
+            GameManager.DisasterType.Wildfire => 48,
             _ => ProvinceManager.Instance != null ? ProvinceManager.Instance.GetLastProvincePlate() : 6
         };
         ProvinceSelected?.Invoke(0);

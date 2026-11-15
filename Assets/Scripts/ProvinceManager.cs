@@ -35,6 +35,10 @@ public sealed class ProvinceManager : MonoBehaviour
     {
         12, 24, 29, 30, 62, 69, 75
     };
+    // One forest-fire training location, used for scenario selection rather than as an official risk ranking.
+    private static readonly HashSet<int> WildfireTrainingPlates = new HashSet<int> { 48 };
+    // Çanakkale is a selected storm-training location for the simulation, not an official risk ranking.
+    private static readonly HashSet<int> StormTrainingPlates = new HashSet<int> { 17 };
 
     public static ProvinceManager Instance { get; private set; }
 
@@ -46,9 +50,15 @@ public sealed class ProvinceManager : MonoBehaviour
 
     public bool IsFloodProvince(int plateCode) => FloodProvincePlates.Contains(plateCode);
     public bool IsLandslideTrainingProvince(int plateCode) => LandslideTrainingPlates.Contains(plateCode);
+    public bool IsWildfireTrainingProvince(int plateCode) => WildfireTrainingPlates.Contains(plateCode);
+    public bool IsStormTrainingProvince(int plateCode) => StormTrainingPlates.Contains(plateCode);
 
     public GameManager.DisasterType GetPrimaryDisasterForProvince(int plateCode)
     {
+        if (IsWildfireTrainingProvince(plateCode))
+            return GameManager.DisasterType.Wildfire;
+        if (IsStormTrainingProvince(plateCode))
+            return GameManager.DisasterType.Storm;
         if (IsLandslideTrainingProvince(plateCode))
             return GameManager.DisasterType.Landslide;
         return IsFloodProvince(plateCode)
@@ -70,6 +80,14 @@ public sealed class ProvinceManager : MonoBehaviour
             if (IsFloodProvince(province.plateCode))
                 return province.plateCode;
         return 74;
+    }
+
+    public int GetFirstStormTrainingProvincePlate()
+    {
+        foreach (ProvinceInfo province in provinces)
+            if (IsStormTrainingProvince(province.plateCode))
+                return province.plateCode;
+        return 17;
     }
 
     public bool IsScenarioCompleted(int plateCode, GameManager.DisasterType disaster)
@@ -104,6 +122,8 @@ public sealed class ProvinceManager : MonoBehaviour
         {
             GameManager.DisasterType.Flood => "Sel",
             GameManager.DisasterType.Landslide => "Heyelan",
+            GameManager.DisasterType.Wildfire => "OrmanYangini",
+            GameManager.DisasterType.Storm => "Firtina",
             _ => "Deprem"
         };
     }
@@ -222,6 +242,8 @@ public sealed class ProvinceManager : MonoBehaviour
         {
             GameManager.DisasterType.Flood => GetFirstFloodProvincePlate(),
             GameManager.DisasterType.Landslide => GetFirstLandslideTrainingProvincePlate(),
+            GameManager.DisasterType.Wildfire => 48,
+            GameManager.DisasterType.Storm => GetFirstStormTrainingProvincePlate(),
             _ => 6
         };
     }
@@ -241,7 +263,8 @@ public sealed class ProvinceManager : MonoBehaviour
         if (HasAnyCompletedScenario(GameManager.DisasterType.Earthquake))
             return true;
         return HasAnyCompletedScenario(GameManager.DisasterType.Flood)
-            || HasAnyCompletedScenario(GameManager.DisasterType.Landslide);
+            || HasAnyCompletedScenario(GameManager.DisasterType.Landslide)
+            || HasAnyCompletedScenario(GameManager.DisasterType.Wildfire);
     }
 
     public bool HasAnyCompletedScenario(GameManager.DisasterType disaster)
@@ -265,12 +288,16 @@ public sealed class ProvinceManager : MonoBehaviour
             PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Deprem.Completed", plate));
             PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Sel.Completed", plate));
             PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Heyelan.Completed", plate));
+            PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.OrmanYangini.Completed", plate));
+            PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Firtina.Completed", plate));
         }
 
         // Clear the older hazard-wide completion flags too; keep scores and other preferences.
         PlayerPrefs.DeleteKey("TurkiyeAfet.Deprem.Completed");
         PlayerPrefs.DeleteKey("TurkiyeAfet.Sel.Completed");
         PlayerPrefs.DeleteKey("TurkiyeAfet.Heyelan.Completed");
+        PlayerPrefs.DeleteKey("TurkiyeAfet.OrmanYangini.Completed");
+        PlayerPrefs.DeleteKey("TurkiyeAfet.Firtina.Completed");
         PlayerPrefs.Save();
     }
 }

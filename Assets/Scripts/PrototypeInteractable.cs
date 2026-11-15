@@ -18,7 +18,9 @@ public enum PrototypeAction
     WaitForFloodAllClear,
     InspectLandslideWarnings,
     ReviewLandslideRoute,
-    CallForLandslideHelp
+    CallForLandslideHelp,
+    ReportWildfire,
+    CallForWildfireHelp
 }
 
 public sealed class PrototypeInteractable : MonoBehaviour
@@ -310,6 +312,7 @@ public sealed class PrototypeInteractable : MonoBehaviour
             || action == PrototypeAction.RaiseFloodValuables
             || action == PrototypeAction.RaiseFloodElectronics
             || action == PrototypeAction.CallForFloodHelp
+            || action == PrototypeAction.CallForWildfireHelp
             || action == PrototypeAction.WaitForFloodAllClear;
         if (action != PrototypeAction.OpenExitDoor && action != PrototypeAction.PrepareDisasterBag && !floodAction)
         {

@@ -38,6 +38,12 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private Vector3 landslideSafePosition;
     private ParticleSystem landslideDust;
     private int lastLandslideDustBurst = -1;
+    private readonly List<GameObject> wildfireFlameLayers = new List<GameObject>();
+    private readonly List<Transform> wildfireFlameTongues = new List<Transform>();
+    private readonly List<Vector3> wildfireFlameBaseScales = new List<Vector3>();
+    private readonly List<Vector3> wildfireTreeCanopies = new List<Vector3>();
+    private Material wildfireSmokeMaterial;
+    private Vector3 wildfireSafePosition;
 
     public PrototypeScenario Scenario => scenario;
 
@@ -75,6 +81,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                 {
                     GameManager.DisasterType.Flood => ProvinceManager.Instance.GetFirstFloodProvincePlate(),
                     GameManager.DisasterType.Landslide => ProvinceManager.Instance.GetFirstLandslideTrainingProvincePlate(),
+                    GameManager.DisasterType.Wildfire => 48,
                     _ => 6
                 };
             ProvinceManager.Instance.SelectProvince(savedPlate);
@@ -84,6 +91,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         {
             GameManager.DisasterType.Flood => "Sel ve Taşkın Senaryosu",
             GameManager.DisasterType.Landslide => "Heyelan Farkındalık Senaryosu",
+            GameManager.DisasterType.Wildfire => "Orman Yangını Tahliye Tatbikatı",
             _ => "Deprem Senaryosu"
         };
         scenario = new GameObject(scenarioName).AddComponent<PrototypeScenario>();
@@ -91,6 +99,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             BuildFloodWorld();
         else if (worldDisasterType == GameManager.DisasterType.Landslide)
             BuildLandslideWorld();
+        else if (worldDisasterType == GameManager.DisasterType.Wildfire)
+            BuildWildfireWorld();
         else
             BuildWorld();
 
@@ -100,12 +110,14 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         {
             GameManager.DisasterType.Flood => new Vector3(-8.6f, 0f, -2.6f),
             GameManager.DisasterType.Landslide => new Vector3(0f, 0f, 10f),
+            GameManager.DisasterType.Wildfire => new Vector3(0f, 0f, 13f),
             _ => new Vector3(-0.4f, 0f, -2.3f)
         };
         float playerYaw = worldDisasterType switch
         {
             GameManager.DisasterType.Flood => 0f,
             GameManager.DisasterType.Landslide => 180f,
+            GameManager.DisasterType.Wildfire => 180f,
             _ => 255f
         };
         player.Initialize(scenario, playerSpawn, playerYaw);
@@ -114,6 +126,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             scenario.ConfigureFlood(floodWater, floodSafePosition);
         else if (worldDisasterType == GameManager.DisasterType.Landslide)
             scenario.ConfigureLandslide(landslideSafePosition);
+        else if (worldDisasterType == GameManager.DisasterType.Wildfire)
+            scenario.ConfigureWildfire(wildfireSafePosition);
         player.SetControlsEnabled(false);
 
         ui = new GameObject("Arayüz Yöneticisi").AddComponent<PrototypeUI>();
@@ -316,6 +330,399 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         BuildLandslideRefuge(safeGreen, amber, trunk, darkMetal, screen, emergencyRed);
         BuildLandslideDebris(soil, clay, shale, stone, stoneLight, wetMud, freshMud);
         CreateLandslideDust();
+    }
+
+    private void BuildWildfireWorld()
+    {
+        wildfireFlameLayers.Clear();
+        wildfireFlameTongues.Clear();
+        wildfireFlameBaseScales.Clear();
+        wildfireTreeCanopies.Clear();
+        wildfireSafePosition = new Vector3(17f, 0f, 7f);
+
+        RenderSettings.fog = true;
+        RenderSettings.fogColor = new Color32(115, 123, 112, 255);
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogDensity = 0.0028f;
+        RenderSettings.ambientSkyColor = new Color32(153, 175, 192, 255);
+        RenderSettings.ambientEquatorColor = new Color32(105, 112, 91, 255);
+        RenderSettings.ambientGroundColor = new Color32(47, 52, 42, 255);
+        RenderSettings.ambientIntensity = 0.9f;
+
+        Material forestFloor = MakeMaterial("Yangın Tatbikatı Orman Zemini", new Color32(73, 91, 61, 255));
+        Material grass = MakeMaterial("Kuru Orman Otu", new Color32(133, 125, 78, 255));
+        Material pineDark = MakeMaterial("Çam İğnesi Koyu", new Color32(31, 65, 48, 255));
+        Material pineLight = MakeMaterial("Çam İğnesi Aydınlık", new Color32(49, 91, 59, 255));
+        Material bark = MakeMaterial("Orman Ağacı Kabuğu", new Color32(79, 57, 40, 255));
+        Material rock = MakeMaterial("Orman Taşı", new Color32(92, 93, 83, 255));
+        Material path = MakeMaterial("Orman Kaçış Patikası", new Color32(105, 91, 67, 255));
+        Material pathLight = MakeMaterial("Tahliye Patikası Yansıtıcı İşaret", new Color32(241, 190, 77, 255));
+        Material cabinWall = MakeMaterial("Orman Gözetleme Kulübesi Ahşabı", new Color32(119, 88, 60, 255));
+        Material roof = MakeMaterial("Gözetleme Kulübesi Çatısı", new Color32(57, 61, 55, 255));
+        Material darkMetal = MakeMaterial("Orman Acil Anons Kutusu", new Color32(38, 55, 56, 255));
+        Material emergencyRed = MakeMaterial("Yangın İhbarı Kırmızı", new Color32(195, 48, 34, 255));
+        Material safeGreen = MakeMaterial("Orman Yangını Güvenli Alan", new Color32(48, 139, 101, 255));
+        Material beaconMat = MakeMaterial("Tahliye Feneri Yeşil", new Color32(69, 235, 172, 255));
+        Material ember = MakeMaterial("Alev Çekirdeği", new Color32(255, 197, 69, 255));
+        Material flame = MakeMaterial("Alev Dış Katmanı", new Color32(237, 83, 32, 255));
+        if (flame.HasProperty("_EmissionColor"))
+        {
+            flame.EnableKeyword("_EMISSION");
+            flame.SetColor("_EmissionColor", new Color(1f, 0.12f, 0.015f) * 1.8f);
+        }
+        if (ember.HasProperty("_EmissionColor"))
+        {
+            ember.EnableKeyword("_EMISSION");
+            ember.SetColor("_EmissionColor", new Color(1f, 0.48f, 0.08f) * 2.3f);
+        }
+        CreateBox("Geniş Orman Zemini", new Vector3(0f, -0.3f, 0f), new Vector3(76f, 0.6f, 64f), forestFloor);
+        for (int i = 0; i < 65; i++)
+        {
+            float x = -29f + (i * 17.13f % 58f);
+            float z = -24f + (i * 11.71f % 43f);
+            GameObject mound = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            mound.name = "Orman Arka Planındaki Alçak Sırt " + i;
+            mound.transform.position = new Vector3(x, -2.6f + (i % 3) * 0.24f, z - 9f);
+            mound.transform.localScale = new Vector3(8f + i % 5 * 1.6f, 4.5f + i % 4 * 0.9f, 7f + i % 3 * 1.3f);
+            mound.GetComponent<Renderer>().sharedMaterial = i % 4 == 0 ? grass : forestFloor;
+            Collider moundCollider = mound.GetComponent<Collider>();
+            if (moundCollider != null) moundCollider.enabled = false;
+        }
+
+        // Thick pine stands frame a legible, open evacuation corridor to the east.
+        int treeIndex = 0;
+        for (int row = 0; row < 8; row++)
+        {
+            float z = -23f + row * 4.4f;
+            for (int column = 0; column < 11; column++)
+            {
+                float x = -19f + column * 2.7f + Mathf.Sin((row + 2) * (column + 1)) * 0.65f;
+                if (x > 6.8f || (z > 3f && x > -3f && x < 8f) ||
+                    (Mathf.Abs(x - 17f) < 6f && z > 0f && z < 14f) || (Mathf.Abs(x) < 3.5f && z > 9f))
+                    continue;
+                BuildWildfireTree(new Vector3(x, 0f, z), treeIndex++, bark,
+                    column % 3 == 0 ? pineLight : pineDark, 5.5f + (row + column) % 4 * 0.8f);
+            }
+        }
+
+        // The open side trail is deliberately separated from the burning forest front.
+        GameObject evacuationTrack = CreateBox("Ormandan Açık Alana Tahliye Patikası", new Vector3(10.8f, 0.025f, 8.4f),
+            new Vector3(22f, 0.05f, 2.5f), path);
+        Collider trackCollider = evacuationTrack.GetComponent<Collider>();
+        if (trackCollider != null) trackCollider.enabled = false;
+        for (int i = 0; i < 7; i++)
+        {
+            float x = 2.5f + i * 2.25f;
+            CreateBox("Patika Kenarı Yansıtıcı İşaret " + i, new Vector3(x, 0.11f, 7.18f),
+                new Vector3(0.35f, 0.12f, 0.12f), pathLight);
+            CreateBox("Patika Kenarı Yansıtıcı İşaret Diğer Yan " + i, new Vector3(x, 0.11f, 9.62f),
+                new Vector3(0.35f, 0.12f, 0.12f), pathLight);
+        }
+
+        // A small staffed trailhead shelter makes the 112 report an in-world action.
+        CreateBox("Gözetleme Noktası Kulübe Arkası", new Vector3(-1.9f, 1.3f, 15.2f), new Vector3(4.2f, 2.6f, 0.25f), cabinWall);
+        CreateBox("Gözetleme Noktası Kulübe Yanı Sol", new Vector3(-3.85f, 1.3f, 16.25f), new Vector3(0.25f, 2.6f, 2.1f), cabinWall);
+        CreateBox("Gözetleme Noktası Kulübe Yanı Sağ", new Vector3(0.05f, 1.3f, 16.25f), new Vector3(0.25f, 2.6f, 2.1f), cabinWall);
+        CreateBox("Gözetleme Noktası Kulübe Çatısı", new Vector3(-1.9f, 2.72f, 16.25f), new Vector3(4.5f, 0.26f, 2.6f), roof);
+        CreateBox("Orman Acil Telefonu Direği", new Vector3(1.25f, 1.0f, 13.0f), new Vector3(0.16f, 2.0f, 0.16f), bark);
+        GameObject radio = CreateBox("112 Orman Yangını Acil Telefonu", new Vector3(1.25f, 1.65f, 12.9f),
+            new Vector3(0.82f, 0.92f, 0.36f), darkMetal);
+        GameObject radioScreen = CreateBox("Acil Telefon Ekranı", new Vector3(1.25f, 1.82f, 12.69f),
+            new Vector3(0.5f, 0.2f, 0.035f), beaconMat);
+        GameObject radioButton = CreateBox("Acil Telefon Çağrı Tuşu", new Vector3(1.25f, 1.43f, 12.68f),
+            new Vector3(0.23f, 0.2f, 0.06f), emergencyRed);
+        GameObject wildfireHandsetPivot = new GameObject("Orman Acil Telefon Ahizesi Menteşesi");
+        wildfireHandsetPivot.transform.position = new Vector3(1.25f, 2.02f, 12.67f);
+        GameObject wildfireHandset = CreateBox("Orman Acil Telefon Ahizesi", wildfireHandsetPivot.transform.position,
+            new Vector3(0.58f, 0.11f, 0.12f), darkMetal);
+        wildfireHandset.transform.SetParent(wildfireHandsetPivot.transform, false);
+        wildfireHandset.transform.localPosition = Vector3.zero;
+        wildfireHandset.transform.localScale = new Vector3(0.58f, 0.11f, 0.12f);
+        wildfireHandset.transform.rotation = Quaternion.Euler(0f, 0f, -8f);
+        PrototypeInteractable reportTask = radio.AddComponent<PrototypeInteractable>();
+        reportTask.Configure(PrototypeAction.CallForWildfireHelp, "Ahizeyi kaldır ve 112'yi ara");
+        reportTask.ConfigureFloodPhoneVisual(wildfireHandsetPivot.transform);
+        foreach (Collider visual in new[] { radioScreen.GetComponent<Collider>(), radioButton.GetComponent<Collider>(), wildfireHandset.GetComponent<Collider>() })
+            if (visual != null) visual.enabled = false;
+        scenario.AddWildfirePreparationTask(reportTask);
+
+        wildfireSafePosition = new Vector3(17f, 0f, 7f);
+        // Keep the clearing surface clearly above the meadow top (y=0) to prevent z-fighting.
+        GameObject clearing = CreateBox("Açık ve Güvenli Tahliye Toplanma Alanı", wildfireSafePosition + new Vector3(0f, 0.035f, 0f),
+            new Vector3(9f, 0.07f, 9f), safeGreen);
+        Collider clearingCollider = clearing.GetComponent<Collider>();
+        if (clearingCollider != null) clearingCollider.enabled = false;
+        GameObject beaconPole = CreateBox("Tahliye Alanı Fener Direği", wildfireSafePosition + new Vector3(0f, 2.2f, 0f),
+            new Vector3(0.22f, 4.4f, 0.22f), darkMetal);
+        GameObject beacon = CreateBox("Uzakta Görünen Yeşil Tahliye Feneri", wildfireSafePosition + new Vector3(0f, 4.55f, 0f),
+            new Vector3(0.85f, 0.42f, 0.85f), beaconMat);
+        Renderer beaconRenderer = beacon.GetComponent<Renderer>();
+        if (beaconRenderer != null && beaconRenderer.material.HasProperty("_EmissionColor"))
+        {
+            beaconRenderer.material.EnableKeyword("_EMISSION");
+            beaconRenderer.material.SetColor("_EmissionColor", new Color(0.2f, 1f, 0.58f) * 2.2f);
+        }
+        Light beaconLight = beacon.AddComponent<Light>();
+        beaconLight.type = LightType.Point;
+        beaconLight.color = new Color(0.26f, 1f, 0.63f);
+        beaconLight.intensity = 2.5f;
+        beaconLight.range = 13f;
+        Collider beaconCollider = beacon.GetComponent<Collider>();
+        if (beaconCollider != null) beaconCollider.enabled = false;
+
+        BuildWildfireFront(forestFloor, grass, bark, flame, ember);
+        BuildWildfireSmoke();
+    }
+
+    private void BuildWildfireTree(Vector3 position, int variation, Material bark, Material needles, float height)
+    {
+        wildfireTreeCanopies.Add(position + Vector3.up * (height * 0.68f));
+        GameObject tree = new GameObject("Çam Ağacı - Orman Yangını Alanı " + variation);
+        tree.transform.position = position;
+        tree.transform.rotation = Quaternion.Euler(0f, variation * 41f, 0f);
+        GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        trunk.name = "Çam Gövdesi";
+        trunk.transform.SetParent(tree.transform, false);
+        trunk.transform.localPosition = new Vector3(0f, height * 0.42f, 0f);
+        trunk.transform.localScale = new Vector3(0.25f, height * 0.45f, 0.25f);
+        trunk.GetComponent<Renderer>().sharedMaterial = bark;
+        for (int tier = 0; tier < 4; tier++)
+        {
+            GameObject crown = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            crown.name = "Katmanlı Çam Dalları " + tier;
+            crown.transform.SetParent(tree.transform, false);
+            crown.transform.localPosition = new Vector3(0f, height * (0.43f + tier * 0.145f), 0f);
+            float width = 2.0f - tier * 0.34f + (variation % 3) * 0.08f;
+            crown.transform.localScale = new Vector3(width, height * 0.17f, width);
+            crown.GetComponent<Renderer>().sharedMaterial = needles;
+            Collider crownCollider = crown.GetComponent<Collider>();
+            if (crownCollider != null) crownCollider.enabled = false;
+        }
+        Rigidbody body = tree.AddComponent<Rigidbody>();
+        body.isKinematic = true;
+        body.useGravity = false;
+        CapsuleCollider collision = tree.AddComponent<CapsuleCollider>();
+        collision.center = new Vector3(0f, height * 0.45f, 0f);
+        collision.height = height * 0.9f;
+        collision.radius = 0.16f;
+    }
+
+    private void BuildWildfireFront(Material forest, Material grass, Material bark, Material flame, Material ember)
+    {
+        // Three distinct ignition pulses move from the forest edge toward the trail.
+        for (int layer = 0; layer < 4; layer++)
+        {
+            GameObject pulse = new GameObject("Orman Yangını Alev Cephesi Dalgası " + (layer + 1));
+            pulse.transform.position = new Vector3(0f, 0f, -13f + layer * 4.4f);
+            pulse.SetActive(false);
+            wildfireFlameLayers.Add(pulse);
+            for (int lightIndex = 0; lightIndex < 3; lightIndex++)
+            {
+                GameObject glowObject = new GameObject("Yangın Parıltısı " + lightIndex);
+                glowObject.transform.SetParent(pulse.transform, false);
+                glowObject.transform.localPosition = new Vector3(-9f + lightIndex * 8f, 1.3f, 0f);
+                Light glow = glowObject.AddComponent<Light>();
+                glow.type = LightType.Point;
+                glow.color = new Color(1f, 0.22f, 0.045f);
+                glow.intensity = 3.1f;
+                glow.range = 11f;
+                glow.shadows = LightShadows.None;
+            }
+            for (int i = 0; i < 13; i++)
+            {
+                float x = -14f + i * 1.7f;
+                if (x > 7f) continue;
+                GameObject flameRoot = new GameObject("Alev Kümesi " + i);
+                flameRoot.transform.SetParent(pulse.transform, false);
+                flameRoot.transform.localPosition = new Vector3(x, 0f, Mathf.Sin(i * 1.7f + layer) * 0.65f);
+                for (int tongue = 0; tongue < 3; tongue++)
+                {
+                    GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    body.name = tongue == 0 ? "Alevin Kızıl Dış Dili" : tongue == 1 ? "Turuncu Alev" : "Sarı Sıcak Çekirdek";
+                    body.transform.SetParent(flameRoot.transform, false);
+                    float height = 1.05f + ((i + tongue + layer) % 4) * 0.34f;
+                    body.transform.localPosition = new Vector3((tongue - 1) * 0.18f, height * 0.37f, (tongue - 1) * 0.11f);
+                    body.transform.localScale = new Vector3(0.24f, height * 0.42f, 0.24f);
+                    wildfireFlameBaseScales.Add(body.transform.localScale);
+                    body.GetComponent<Renderer>().sharedMaterial = tongue == 0 ? flame : ember;
+                    Collider collider = body.GetComponent<Collider>();
+                    if (collider != null) collider.enabled = false;
+                    wildfireFlameTongues.Add(body.transform);
+                }
+            }
+            for (int i = 0; i < 22; i++)
+            {
+                float x = -15f + i * 1.05f;
+                GameObject stump = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                stump.name = "Yangın Öncesi Kuru Çalı " + i;
+                stump.transform.SetParent(pulse.transform, false);
+                stump.transform.localPosition = new Vector3(x, 0.28f + (i % 3) * 0.08f, Mathf.Sin(i * 2.3f) * 0.9f);
+                stump.transform.localScale = new Vector3(0.38f, 0.28f, 0.4f);
+                stump.GetComponent<Renderer>().sharedMaterial = i % 2 == 0 ? forest : grass;
+                Collider collider = stump.GetComponent<Collider>();
+                if (collider != null) collider.enabled = false;
+            }
+        }
+    }
+
+    private void BuildWildfireSmoke()
+    {
+        if (wildfireTreeCanopies.Count == 0)
+            return;
+
+        wildfireSmokeMaterial = CreateWildfireSmokeMaterial(CreateWildfireSmokeTexture());
+        UnityEngine.Random.State previousRandomState = UnityEngine.Random.state;
+        UnityEngine.Random.InitState(23981);
+        const int smokeSources = 12;
+        for (int sourceIndex = 0; sourceIndex < smokeSources; sourceIndex++)
+        {
+            Vector3 canopy = wildfireTreeCanopies[UnityEngine.Random.Range(0, wildfireTreeCanopies.Count)];
+            Vector3 offset = new Vector3(UnityEngine.Random.Range(-0.9f, 0.9f),
+                UnityEngine.Random.Range(-0.65f, 0.25f), UnityEngine.Random.Range(-0.9f, 0.9f));
+            GameObject source = new GameObject("Ağaç Tacında Yükselen Duman Kaynağı " + sourceIndex);
+            source.transform.position = canopy + offset;
+            source.transform.rotation = Quaternion.Euler(UnityEngine.Random.Range(-8f, 8f),
+                UnityEngine.Random.Range(-25f, 25f), UnityEngine.Random.Range(-8f, 8f));
+
+            ParticleSystem particles = source.AddComponent<ParticleSystem>();
+            particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = particles.main;
+            main.playOnAwake = false;
+            main.loop = true;
+            main.duration = 8f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(4.5f, 8f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.45f, 1.15f);
+            main.startSize = new ParticleSystem.MinMaxCurve(1.1f, 2.7f);
+            main.startColor = new ParticleSystem.MinMaxGradient(
+                new Color(0.20f, 0.21f, 0.20f, 0.7f), new Color(0.42f, 0.41f, 0.38f, 0.86f));
+            main.gravityModifier = -0.035f;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.maxParticles = 72;
+
+            var emission = particles.emission;
+            emission.rateOverTime = UnityEngine.Random.Range(1.7f, 3.2f);
+            var shape = particles.shape;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = UnityEngine.Random.Range(14f, 24f);
+            shape.radius = UnityEngine.Random.Range(0.18f, 0.38f);
+            shape.rotation = new Vector3(-8f, 0f, 0f);
+
+            var sizeOverLifetime = particles.sizeOverLifetime;
+            sizeOverLifetime.enabled = true;
+            sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f,
+                new AnimationCurve(new Keyframe(0f, 0.5f), new Keyframe(0.3f, 1f), new Keyframe(1f, 1.75f)));
+            var colorOverLifetime = particles.colorOverLifetime;
+            colorOverLifetime.enabled = true;
+            Gradient fade = new Gradient();
+            fade.SetKeys(
+                new[] { new GradientColorKey(new Color(0.22f, 0.23f, 0.22f), 0f),
+                    new GradientColorKey(new Color(0.34f, 0.33f, 0.31f), 0.48f),
+                    new GradientColorKey(new Color(0.49f, 0.48f, 0.45f), 1f) },
+                new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(0.76f, 0.16f),
+                    new GradientAlphaKey(0.58f, 0.62f), new GradientAlphaKey(0f, 1f) });
+            colorOverLifetime.color = new ParticleSystem.MinMaxGradient(fade);
+            var noise = particles.noise;
+            noise.enabled = true;
+            noise.strength = new ParticleSystem.MinMaxCurve(0.28f, 0.52f);
+            noise.frequency = 0.32f;
+            noise.scrollSpeed = 0.18f;
+            noise.damping = true;
+
+            ParticleSystemRenderer particleRenderer = particles.GetComponent<ParticleSystemRenderer>();
+            particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+            particleRenderer.sharedMaterial = wildfireSmokeMaterial;
+            particleRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            particleRenderer.receiveShadows = false;
+            particles.Play();
+        }
+        UnityEngine.Random.state = previousRandomState;
+    }
+
+    private Texture2D CreateWildfireSmokeTexture()
+    {
+        const int resolution = 192;
+        Texture2D texture = new Texture2D(resolution, resolution, TextureFormat.RGBA32, true)
+        {
+            name = "Düzensiz Kenarlı Yumuşak Orman Dumanı",
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear,
+            anisoLevel = 2
+        };
+        Color[] pixels = new Color[resolution * resolution];
+        for (int y = 0; y < resolution; y++)
+        {
+            for (int x = 0; x < resolution; x++)
+            {
+                float u = x / (float)(resolution - 1);
+                float v = y / (float)(resolution - 1);
+                float broadNoise = Mathf.PerlinNoise(u * 4.2f + 13.7f, v * 4.2f + 8.3f);
+                float detailNoise = Mathf.PerlinNoise(u * 10.5f + 4.1f, v * 10.5f + 23.6f);
+                float fineNoise = Mathf.PerlinNoise(u * 22f + 39.2f, v * 22f + 2.8f);
+                float noise = broadNoise * 0.55f + detailNoise * 0.30f + fineNoise * 0.15f;
+                float dx = (u - 0.5f) * 1.75f;
+                float dy = (v - 0.49f) * 1.9f;
+                float distance = Mathf.Sqrt(dx * dx + dy * dy);
+                float irregularEdge = 0.48f + noise * 0.30f;
+                float edgeProgress = Mathf.InverseLerp(irregularEdge * 0.52f, irregularEdge, distance);
+                float cloud = 1f - Mathf.SmoothStep(0f, 1f, edgeProgress);
+                float alpha = cloud * Mathf.Lerp(0.35f, 0.88f, noise);
+                pixels[y * resolution + x] = new Color(1f, 1f, 1f, alpha);
+            }
+        }
+        texture.SetPixels(pixels);
+        texture.Apply(true, true);
+        return texture;
+    }
+
+    private Material CreateWildfireSmokeMaterial(Texture2D texture)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
+        if (shader == null) shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended");
+        Material material = new Material(shader) { name = "Duman - Yumuşak Gürültülü Hacim Katmanları" };
+        if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
+        if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", texture);
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", Color.white);
+        if (material.HasProperty("_Color")) material.SetColor("_Color", Color.white);
+        material.SetOverrideTag("RenderType", "Transparent");
+        if (material.HasProperty("_Surface")) material.SetFloat("_Surface", 1f);
+        if (material.HasProperty("_Blend")) material.SetFloat("_Blend", 0f);
+        if (material.HasProperty("_SrcBlend")) material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        if (material.HasProperty("_DstBlend")) material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        if (material.HasProperty("_SrcBlendAlpha")) material.SetInt("_SrcBlendAlpha", (int)UnityEngine.Rendering.BlendMode.One);
+        if (material.HasProperty("_DstBlendAlpha")) material.SetInt("_DstBlendAlpha", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        if (material.HasProperty("_ZWrite")) material.SetInt("_ZWrite", 0);
+        if (material.HasProperty("_AlphaClip")) material.SetFloat("_AlphaClip", 0f);
+        material.DisableKeyword("_ALPHATEST_ON");
+        material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        material.DisableKeyword("_ALPHAMODULATE_ON");
+        material.EnableKeyword("_ALPHABLEND_ON");
+        material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.renderQueue = 3000;
+        return material;
+    }
+
+    public void BeginWildfireVisual()
+    {
+        for (int i = 0; i < wildfireFlameLayers.Count; i++)
+            wildfireFlameLayers[i].SetActive(i == 0);
+    }
+
+    public void UpdateWildfireVisual(float elapsed)
+    {
+        int activeLayers = Mathf.Clamp(Mathf.FloorToInt(elapsed / 4.8f) + 1, 1, wildfireFlameLayers.Count);
+        for (int i = 0; i < wildfireFlameLayers.Count; i++)
+            if (wildfireFlameLayers[i] != null && wildfireFlameLayers[i].activeSelf != (i < activeLayers))
+                wildfireFlameLayers[i].SetActive(i < activeLayers);
+        for (int i = 0; i < wildfireFlameTongues.Count; i++)
+        {
+            Transform tongue = wildfireFlameTongues[i];
+            if (tongue == null || !tongue.gameObject.activeInHierarchy) continue;
+            float flicker = 0.88f + Mathf.Sin(Time.time * 8.1f + i * 1.73f) * 0.12f;
+            Vector3 scale = wildfireFlameBaseScales[i];
+            scale.y *= flicker;
+            tongue.localScale = scale;
+        }
     }
 
     private void BuildLandslideMountain(Material grass, Material grassLight, Material grassDark,

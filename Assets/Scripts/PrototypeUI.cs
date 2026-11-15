@@ -438,14 +438,18 @@ public sealed class PrototypeUI : MonoBehaviour
             ? GameManager.Instance.SelectedDisaster : GameManager.DisasterType.Earthquake;
         bool flood = disaster == GameManager.DisasterType.Flood;
         bool landslide = disaster == GameManager.DisasterType.Landslide;
+        bool wildfire = disaster == GameManager.DisasterType.Wildfire;
         introProvinceLabel.text = selected.name + "  •  PLAKA " + selected.PlateLabel + "  /  EĞİTİM TATBİKATI";
         introScenarioTitle.text = flood ? "Sel ve taşkın: evden yüksek ve güvenli alana"
             : landslide ? "Heyelan: yamaçtan yana doğru güvenli alana"
+            : wildfire ? "Orman yangını: dumanı bildir, güvenli alana tahliye ol"
             : selected.trainingScenarioTitle;
         introScenarioInfo.text = flood
             ? "Taşkın uyarısını izle, değerli eşyaları ve ilaçları yukarı kaldır; su basma riski varsa elektriği güvenli biçimde kes.\nSu yükselirken araca binme veya akıntıya girme; evin üst katına ya da belirlenmiş yüksek alana çık.\nSu çekilmeden geri dönme; kirli suya ve elektrik hatlarına yaklaşma, resmî duyuruları takip et.\n\nBu, il için tehlike tahmini değil; afet farkındalık tatbikatıdır."
             : landslide
             ? "Yağış sonrası yamaçta yeni çatlak, su sızıntısı, eğilen ağaç/direk veya alışılmadık sesleri fark edersen bölgeden uzaklaş ve 112'ye bildir.\nHeyelan başlarsa akış hattına yaklaşma; mümkünse hareket yönüne dik biçimde yan tarafa ve daha güvenli yüksek zemine ilerle. Vadiye, dere yatağına ve heyelan alanına girme.\nTehlike geçince geri dönme; resmî ekiplerin ve duyuruların yönlendirmesini bekle.\n\nBu, il için tehlike tahmini değil; afet farkındalık tatbikatıdır."
+            : wildfire
+            ? "Dumanı veya alevi güvenli bir mesafeden fark edersen konumu 112'ye bildir. Yangına müdahale etmeye çalışma; yetkililerin tahliye uyarılarını izle ve güvenli güzergâhtan açık alana çık. Toplanma alanında kal, yangın bölgesine geri dönme.\n\nBu, il için tehlike tahmini değil; afet farkındalık tatbikatıdır."
             : "Rafı sabitle, ağır eşyayı aşağı al ve çıkış yolunu aç.\nSarsıntıda sağlam bir eşyanın yanında çök-kapan-tutun.\nSonrasında çevreni kontrol et; gaz kokusu varsa vanayı güvenliyse kapat, kapı ve pencereleri aç ve elektrik düğmelerine dokunmadan toplanma alanına iler.\n\n" + selected.trainingScenarioNote;
         SetPages(introPage);
         owner.SetPlayerControls(false);
@@ -478,8 +482,9 @@ public sealed class PrototypeUI : MonoBehaviour
             GameManager.DisasterType disaster = ProvinceManager.Instance.GetPrimaryDisasterForProvince(plateCode);
             bool flood = disaster == GameManager.DisasterType.Flood;
             bool landslide = disaster == GameManager.DisasterType.Landslide;
+            bool wildfire = disaster == GameManager.DisasterType.Wildfire;
             provinceHoverText.text = "ÖNİZLEME • " + province.name + " / " + province.PlateLabel
-                + " • AFET: " + (flood ? "SEL / TAŞKIN" : landslide ? "HEYELAN" : "DEPREM");
+                + " • AFET: " + (flood ? "SEL / TAŞKIN" : landslide ? "HEYELAN" : wildfire ? "ORMAN YANGINI" : "DEPREM");
             DisplayProvinceInfo(plateCode, false);
         }
     }
@@ -505,15 +510,18 @@ public sealed class PrototypeUI : MonoBehaviour
             GameManager.Instance?.SelectDisaster(disaster);
         bool flood = disaster == GameManager.DisasterType.Flood;
         bool landslide = disaster == GameManager.DisasterType.Landslide;
+        bool wildfire = disaster == GameManager.DisasterType.Wildfire;
         provinceSelectedText.text = province.name + "  •  PLAKA " + province.PlateLabel;
         bool completed = ProvinceManager.Instance.IsScenarioCompleted(plateCode, disaster);
-        provinceScenarioText.text = "Afet türü: " + (flood ? "Sel ve taşkın" : landslide ? "Heyelan" : "Deprem")
+        provinceScenarioText.text = "Afet türü: " + (flood ? "Sel ve taşkın" : landslide ? "Heyelan" : wildfire ? "Orman yangını" : "Deprem")
             + "\n" + (flood ? "Sel ve taşkın: güvenli tahliye"
                 : landslide ? "Heyelan: işaretleri fark et, akış hattından dik yönde uzaklaş"
+                : wildfire ? "Orman yangını: dumanı bildir, açık alana tahliye ol"
                 : province.trainingScenarioTitle)
             + (completed ? "\n\n✓ Bu afet türü tamamlandı — ilgili iller gri; tekrar seçilebilir." : "\n\n" + (flood
                 ? "Taşkın tehlikesine ve geçmiş taşkın olaylarına göre seçilmiş eğitim ili."
                 : landslide ? "Heyelan farkındalık tatbikatı için seçilmiş eğitim ili; resmî risk sınıflaması değildir."
+                : wildfire ? "Orman yangını farkındalık tatbikatı için seçilmiş eğitim ili; resmî risk sınıflaması değildir."
                 : province.trainingScenarioNote));
         provinceContinueButton.interactable = selected;
     }
@@ -563,7 +571,7 @@ public sealed class PrototypeUI : MonoBehaviour
         string fullTasks;
         if (phase.StartsWith("DEPREM ÖNCESİ"))
             fullTasks = tasks;
-        else if (phase.StartsWith("SEL"))
+        else if (phase.StartsWith("SEL") || phase.StartsWith("ORMAN YANGINI"))
             fullTasks = tasks;
         else if (phase.StartsWith("DEPREM ANI"))
         {
@@ -597,7 +605,8 @@ public sealed class PrototypeUI : MonoBehaviour
         PrototypeScenario currentScenario = owner != null ? owner.Scenario : null;
         if (preparationCountdown > 0.05f && currentScenario != null && !currentScenario.IsLandslideScenario)
         {
-            string disasterName = currentScenario.IsFloodScenario ? "SEL " : "DEPREM ";
+            string disasterName = currentScenario.IsWildfireScenario ? "ORMAN YANGINI "
+                : currentScenario.IsFloodScenario ? "SEL " : "DEPREM ";
             quakeStartHint.text = disasterName + Mathf.CeilToInt(preparationCountdown) + " SANİYE İÇİNDE BAŞLIYOR";
         }
         else

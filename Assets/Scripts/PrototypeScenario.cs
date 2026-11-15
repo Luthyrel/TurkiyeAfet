@@ -5,8 +5,8 @@ using UnityEngine.InputSystem;
 
 public sealed class PrototypeScenario : MonoBehaviour
 {
-    public enum Phase { Preparation, Shaking, Landslide, Flooding, Blackout, Trapped, Aftershock, Completed }
-    private enum FloodDialogueMode { None, EmergencyCall, OfficialBulletin }
+    public enum Phase { Preparation, Shaking, Landslide, Flooding, Wildfire, Blackout, Trapped, Aftershock, Completed }
+    private enum FloodDialogueMode { None, EmergencyCall, OfficialBulletin, WildfireCall }
 
     private const float QuakeDuration = 10f;
     private const float RequiredHoldDuration = 5f;
@@ -22,6 +22,8 @@ public sealed class PrototypeScenario : MonoBehaviour
     private const float FloodSafeZoneHoldDuration = 2f;
     private const float FloodDrowningDuration = 5f;
     private const float LandslideRunDuration = 18f;
+    private const float WildfireRunDuration = 24f;
+    private const float WildfireSafeHoldDuration = 3f;
 
     private static readonly string[] TrappedQuestions =
     {
@@ -59,6 +61,7 @@ public sealed class PrototypeScenario : MonoBehaviour
     private readonly List<PrototypeInteractable> floodAfterTasks = new List<PrototypeInteractable>();
     private readonly List<PrototypeInteractable> landslidePreparationTasks = new List<PrototypeInteractable>();
     private readonly List<PrototypeInteractable> landslideAfterTasks = new List<PrototypeInteractable>();
+    private readonly List<PrototypeInteractable> wildfirePreparationTasks = new List<PrototypeInteractable>();
     private readonly List<Rigidbody> looseObjects = new List<Rigidbody>();
     private readonly Dictionary<Rigidbody, PrototypeInteractable> furniture = new Dictionary<Rigidbody, PrototypeInteractable>();
 
@@ -110,11 +113,21 @@ public sealed class PrototypeScenario : MonoBehaviour
     private float landslideTimer;
     private Vector3 landslideSafeCenter = new Vector3(8f, 0f, 7f);
     private int landslidePreparationIndex;
+    private int wildfirePreparationIndex;
+    private bool wildfireScenario;
+    private bool wildfireEvacuated;
+    private float wildfireTimer;
+    private float wildfireSafeHoldTimer;
+    private Vector3 wildfireSafeCenter = new Vector3(17f, 0f, 7f);
+    private int wildfireCorrectChoice;
+    private int wildfireShuffledStep = -1;
+    private string[] wildfireShuffledOptions;
 
     public Phase CurrentPhase { get; private set; } = Phase.Preparation;
     public bool IsShaking => CurrentPhase == Phase.Shaking;
     public bool IsFloodScenario => floodScenario;
     public bool IsLandslideScenario => landslideScenario;
+    public bool IsWildfireScenario => wildfireScenario;
     public bool IsLandslideActive => landslideScenario && CurrentPhase == Phase.Landslide;
     public bool IsLandslideEvacuated => landslideEvacuated;
     public Vector3 LandslideSafePosition => landslideSafeCenter;
@@ -181,6 +194,13 @@ public sealed class PrototypeScenario : MonoBehaviour
                     return landslideAfterTasks.Count > 0 ? landslideAfterTasks[0] : null;
                 return null;
             }
+            if (wildfireScenario)
+            {
+                if (CurrentPhase == Phase.Preparation)
+                    return wildfirePreparationIndex < wildfirePreparationTasks.Count
+                        ? wildfirePreparationTasks[wildfirePreparationIndex] : null;
+                return null;
+            }
             if (floodScenario)
             {
                 if (CurrentPhase == Phase.Preparation)
@@ -226,6 +246,19 @@ public sealed class PrototypeScenario : MonoBehaviour
         landslideScenario = true;
         landslideSafeCenter = safeCenter;
         CurrentPhase = Phase.Preparation;
+    }
+
+    public void ConfigureWildfire(Vector3 safeCenter)
+    {
+        wildfireScenario = true;
+        wildfireSafeCenter = safeCenter;
+        CurrentPhase = Phase.Preparation;
+    }
+
+    public void AddWildfirePreparationTask(PrototypeInteractable task)
+    {
+        if (task != null && !wildfirePreparationTasks.Contains(task))
+            wildfirePreparationTasks.Add(task);
     }
 
     public void AddLandslidePreparationTask(PrototypeInteractable task)
@@ -292,6 +325,12 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (landslideScenario)
         {
             TryInteractLandslide(target);
+            return;
+        }
+
+        if (wildfireScenario)
+        {
+            TryInteractWildfire(target);
             return;
         }
 
@@ -456,6 +495,111 @@ public sealed class PrototypeScenario : MonoBehaviour
             BeginLandslideEmergencyCall(target);
         }
         RefreshHud();
+    }
+
+    private void TryInteractWildfire(PrototypeInteractable target)
+    {
+        PrototypeInteractable expected = CurrentPreparationTarget;
+        if (CurrentPhase != Phase.Preparation || target == null || target != expected)
+        {
+            bootstrap.ShowNotice(expected != null
+                ? "Aktif hedefe yaklaş: " + expected.ActionName + "."
+                : CurrentPhase == Phase.Wildfire
+                    ? "Duman ve alevlerden uzaklaş; açık alandaki yeşil tahliye fenerine ilerle."
+                    : "Güvenli alanda kal ve tatbikat yönergelerini izle.");
+            return;
+        }
+
+        if (target.Action != PrototypeAction.CallForWildfireHelp)
+        {
+            bootstrap.ShowNotice("Bu, yangın ihbarı için kullanılacak cihaz değil.");
+            return;
+        }
+
+        BeginWildfireEmergencyCall(target);
+    }
+
+    private void BeginWildfireEmergencyCall(PrototypeInteractable target)
+    {
+        if (floodDialogueMode != FloodDialogueMode.None)
+            return;
+        floodDialogueTarget = target;
+        floodDialogueMode = FloodDialogueMode.WildfireCall;
+        floodDialogueStep = 0;
+        wildfireShuffledStep = -1;
+        wildfireShuffledOptions = null;
+        target.SetFloodPhoneRaised(true);
+        bootstrap.SetPlayerControls(false);
+        PrototypeAudio.PlayPhoneRing();
+        bootstrap.ShowNotice("112 Acil Çağrı Merkezi aranıyor...");
+        StartCoroutine(ConnectWildfireEmergencyCall());
+    }
+
+    private IEnumerator ConnectWildfireEmergencyCall()
+    {
+        yield return new WaitForSecondsRealtime(1.25f);
+        PrototypeAudio.PlayPhoneConnect();
+        ShowWildfireCallStep(string.Empty);
+    }
+
+    private void ShowWildfireCallStep(string feedback)
+    {
+        if (floodDialogueStep == 0)
+        {
+            PresentWildfireCallOptions(new[]
+            {
+                "Gördüğüm noktayı ve en yakın yol ya da yerleşimi tarif eder, dumanın yönünü de eklerim.",
+                "İlçe ile en yakın yolu söyler, dumanın yönünü ekipler gelince değerlendirmelerine bırakırım.",
+                "Önce haritadan tam adresi bulur, ekipleri eksik yönlendirmemek için sonra yeniden ararım."
+            }, 0, feedback);
+        }
+        else if (floodDialogueStep == 1)
+        {
+            PresentWildfireCallOptions(new[]
+            {
+                "Güvenli yerde olduğumu, gördüğüm kişileri ve doğrulayabildiğim yardım ihtiyacını aktarırım.",
+                "Güvenli olduğumu ve çevredeki ev sayısını söyler, içeridekilerin durumunu ekiplere bırakırım.",
+                "Önce kendi durumumu ve konumumu bildirir, diğer kişilerle ilgili bilgiyi sorulursa paylaşırım."
+            }, 0, feedback);
+        }
+        else
+        {
+            PresentWildfireCallOptions(new[]
+            {
+                "Duman ve alevden uzak tahliye güzergâhını izler, güvenli yerde ekiplerin talimatını beklerim.",
+                "En kısa bilinen yolu seçer, yol üzerindeki dumanlı bölümü hızlıca geçip açık alana çıkarım.",
+                "Yakınlarda olabilecek kişileri ekiplere bildirir, onları aramak için güvenli alanın dışına çıkarım."
+            }, 0, feedback);
+        }
+    }
+
+    private void PresentWildfireCallOptions(string[] options, int correctIndex, string feedback)
+    {
+        if (wildfireShuffledOptions == null || wildfireShuffledStep != floodDialogueStep)
+        {
+            List<string> shuffled = new List<string>(options);
+            int correctOption = correctIndex;
+            for (int i = shuffled.Count - 1; i > 0; i--)
+            {
+                int swapIndex = UnityEngine.Random.Range(0, i + 1);
+                string temp = shuffled[i];
+                shuffled[i] = shuffled[swapIndex];
+                shuffled[swapIndex] = temp;
+                if (correctOption == i) correctOption = swapIndex;
+                else if (correctOption == swapIndex) correctOption = i;
+            }
+            wildfireShuffledStep = floodDialogueStep;
+            wildfireShuffledOptions = shuffled.ToArray();
+            wildfireCorrectChoice = correctOption;
+        }
+        string provinceName = ProvinceManager.Instance != null
+            && ProvinceManager.Instance.SelectedProvince != null
+            ? ProvinceManager.Instance.SelectedProvince.name : "seçilen il";
+        bootstrap.ShowFloodDialogue("112 ACİL ÇAĞRI MERKEZİ",
+            floodDialogueStep == 0 ? "Operatör: Yangını nerede gördünüz? Konumu nasıl tarif edebilirsiniz? İl: " + provinceName + "."
+                : floodDialogueStep == 1 ? "Operatör: Siz ve çevredeki kişilerin durumu nedir?"
+                : "Operatör: Görüşme sonrası nasıl hareket edeceksiniz?",
+            wildfireShuffledOptions, feedback);
     }
 
     private void BeginLandslideEmergencyCall(PrototypeInteractable target)
@@ -694,7 +838,9 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (floodDialogueMode == FloodDialogueMode.None || floodDialogueTarget == null)
             return;
 
-        int correctChoice = floodDialogueMode == FloodDialogueMode.OfficialBulletin
+        int correctChoice = floodDialogueMode == FloodDialogueMode.WildfireCall
+            ? wildfireCorrectChoice
+            : floodDialogueMode == FloodDialogueMode.OfficialBulletin
             ? 1
             : floodDialogueStep == 0 ? 1
             : floodDialogueStep == 1 ? 2 : 0;
@@ -705,11 +851,15 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (choiceIndex != correctChoice)
         {
             PrototypeAudio.PlayAnswerWrong();
-            string feedback = floodDialogueMode == FloodDialogueMode.EmergencyCall
-                ? "Operatör: Güvenli alandan ayrılmayın. Konumunuzu ve içeridekilerin durumunu bildirin."
-                : "Duyuru: Su çekilse bile yollar ve yapılar tehlikeli olabilir. Güvenli alanda kalın.";
+            string feedback = floodDialogueMode == FloodDialogueMode.WildfireCall
+                ? "Operatör: Yaklaşmayın. Konumu ve gördüğünüz bilgileri net biçimde aktarın; güvenli yerde kalın."
+                : floodDialogueMode == FloodDialogueMode.EmergencyCall
+                    ? "Operatör: Güvenli alandan ayrılmayın. Konumunuzu ve içeridekilerin durumunu bildirin."
+                    : "Duyuru: Su çekilse bile yollar ve yapılar tehlikeli olabilir. Güvenli alanda kalın.";
             if (floodDialogueMode == FloodDialogueMode.EmergencyCall)
                 ShowFloodCallStep(feedback);
+            else if (floodDialogueMode == FloodDialogueMode.WildfireCall)
+                ShowWildfireCallStep(feedback);
             else
                 bootstrap.ShowFloodDialogue("RESMÎ TAŞKIN BİLGİLENDİRMESİ",
                     "Su seviyesi düştü; ancak dere yatağına, su basmış yola veya hasarlı binaya yaklaşmayın. Yetkililerin talimatlarını bekleyin.",
@@ -722,24 +872,40 @@ public sealed class PrototypeScenario : MonoBehaviour
         }
 
         PrototypeAudio.PlayAnswerCorrect();
-        if (floodDialogueMode == FloodDialogueMode.EmergencyCall && floodDialogueStep < 2)
+        if ((floodDialogueMode == FloodDialogueMode.EmergencyCall || floodDialogueMode == FloodDialogueMode.WildfireCall)
+            && floodDialogueStep < 2)
         {
             floodDialogueStep++;
-            ShowFloodCallStep(string.Empty);
+            if (floodDialogueMode == FloodDialogueMode.WildfireCall)
+                ShowWildfireCallStep(string.Empty);
+            else
+                ShowFloodCallStep(string.Empty);
             return;
         }
 
         PrototypeInteractable completedTarget = floodDialogueTarget;
-        if (floodDialogueMode == FloodDialogueMode.EmergencyCall)
+        FloodDialogueMode completedMode = floodDialogueMode;
+        if (completedMode == FloodDialogueMode.EmergencyCall || completedMode == FloodDialogueMode.WildfireCall)
             completedTarget.SetFloodPhoneRaised(false);
         floodDialogueMode = FloodDialogueMode.None;
         floodDialogueTarget = null;
         bootstrap.HideFloodDialogue();
         bootstrap.SetPlayerControls(true);
-        CompleteFloodAfterTask(completedTarget,
-            completedTarget.Action == PrototypeAction.CallForFloodHelp
-                ? "112'ye konum ve kişi bilgilerini ilettin. Talimatları bekle. +75 puan."
-                : "Resmî duyuruyu okudun; güvenli alanda kalma talimatını onayladın. +75 puan.");
+        if (completedMode == FloodDialogueMode.WildfireCall)
+        {
+            completedTarget.CompleteAction();
+            wildfirePreparationIndex++;
+            Score += 100;
+            PrototypeAudio.PlayTaskComplete();
+            bootstrap.ShowNotice("Dumanı ve konumu 112'ye bildirdin. Yangına yaklaşmadan tahliye patikasını izle. +100 puan.");
+            if (PreparationComplete()) StartPreparationCountdown();
+            RefreshHud();
+        }
+        else
+            CompleteFloodAfterTask(completedTarget,
+                completedTarget.Action == PrototypeAction.CallForFloodHelp
+                    ? "112'ye konum ve kişi bilgilerini ilettin. Talimatları bekle. +75 puan."
+                    : "Resmî duyuruyu okudun; güvenli alanda kalma talimatını onayladın. +75 puan.");
     }
 
     private void CompleteFloodAfterTask(PrototypeInteractable target, string notice)
@@ -859,9 +1025,11 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         preparationCountdownStarted = true;
         preparationCountdownRemaining = PreparationCountdownDuration;
-        lastFloodCountdownDisplayed = floodScenario || landslideScenario
+        lastFloodCountdownDisplayed = floodScenario || landslideScenario || wildfireScenario
             ? Mathf.CeilToInt(preparationCountdownRemaining) : -1;
-        bootstrap.ShowNotice(landslideScenario
+        bootstrap.ShowNotice(wildfireScenario
+            ? "İhbar alındı. Tahliye tatbikatı 5 saniye içinde başlayacak."
+            : landslideScenario
             ? "Hazırlık tamamlandı. Heyelan senaryosu yaklaşık 5 saniye içinde başlayacak."
             : floodScenario
                 ? "Hazırlık tamamlandı. Taşkın suyu yaklaşık 5 saniye içinde yükselmeye başlayacak."
@@ -874,6 +1042,10 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (landslideScenario)
             return landslidePreparationTasks.Count > 0
                 && landslidePreparationIndex >= landslidePreparationTasks.Count;
+
+        if (wildfireScenario)
+            return wildfirePreparationTasks.Count > 0
+                && wildfirePreparationIndex >= wildfirePreparationTasks.Count;
 
         if (preparationTasks.Count == 0)
             return false;
@@ -890,6 +1062,8 @@ public sealed class PrototypeScenario : MonoBehaviour
     public bool PreparationComplete()
     {
         if (landslideScenario)
+            return CorePreparationTasksComplete();
+        if (wildfireScenario)
             return CorePreparationTasksComplete();
         if (floodScenario)
             return floodPreparationTasks.Count > 0 && floodPreparationIndex >= floodPreparationTasks.Count;
@@ -914,6 +1088,12 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (landslideScenario)
         {
             StartLandslide();
+            return;
+        }
+
+        if (wildfireScenario)
+        {
+            StartWildfire();
             return;
         }
 
@@ -963,6 +1143,87 @@ public sealed class PrototypeScenario : MonoBehaviour
         bootstrap.BeginLandslideVisual();
         bootstrap.ShowNotice("Heyelan başladı! Yamaçtan yana, hareket yönüne dik kaç. Vadiden aşağı veya akış hattına doğru koşma; yeşil güvenli alana ulaş.");
         RefreshHud();
+    }
+
+    private void StartWildfire()
+    {
+        CurrentPhase = Phase.Wildfire;
+        preparationCountdownStarted = false;
+        preparationCountdownRemaining = 0f;
+        wildfireTimer = 0f;
+        wildfireSafeHoldTimer = 0f;
+        wildfireEvacuated = false;
+        GameManager.Instance?.StartScenario();
+        bootstrap.BeginWildfireVisual();
+        bootstrap.ShowNotice("Orman yangını başladı. Alevlere yaklaşma veya söndürmeye çalışma; açık tahliye patikasından yeşil fenerli toplanma alanına git.");
+        RefreshHud();
+    }
+
+    private void UpdateWildfire()
+    {
+        if (CurrentPhase != Phase.Wildfire)
+            return;
+
+        wildfireTimer += Time.deltaTime;
+        bootstrap.UpdateWildfireVisual(wildfireTimer);
+        if (player != null)
+        {
+            Vector3 position = player.transform.position;
+            Vector3 offset = position - wildfireSafeCenter;
+            bool inSafeClearing = Mathf.Abs(offset.x) <= 4.4f && Mathf.Abs(offset.z) <= 4.4f
+                && position.y >= wildfireSafeCenter.y - 0.35f;
+            if (inSafeClearing)
+            {
+                if (!wildfireEvacuated)
+                {
+                    wildfireEvacuated = true;
+                    wildfireSafeHoldTimer = 0f;
+                    Score += 150;
+                    PrototypeAudio.PlayTaskComplete();
+                    bootstrap.ShowNotice("Açık toplanma alanına ulaştın. Burada kal, yangın bölgesine geri dönme ve ekiplerin yönlendirmesini bekle. +150 puan.");
+                }
+                wildfireSafeHoldTimer += Time.deltaTime;
+                if (wildfireSafeHoldTimer >= WildfireSafeHoldDuration)
+                {
+                    CurrentPhase = Phase.Aftershock;
+                    FinishScenario();
+                    return;
+                }
+            }
+            else if (wildfireEvacuated)
+            {
+                wildfireEvacuated = false;
+                wildfireSafeHoldTimer = 0f;
+                bootstrap.ShowNotice("Güvenli alandan çıktın. Yeşil sınırın içine dön ve orman tarafına yaklaşma.");
+            }
+
+            float fireEdge = -13f + Mathf.Clamp(Mathf.Floor(wildfireTimer / 4.8f), 0f, 3f) * 4.4f;
+            if (position.x < 8.5f && position.z < fireEdge + 1.8f && position.z > -16f)
+            {
+                FailWildfireScenario("Alev cephesinin ilerlediği orman koridorunda kaldın.");
+                return;
+            }
+        }
+
+        if (wildfireTimer >= WildfireRunDuration)
+        {
+            FailWildfireScenario("Alevler tahliye patikasına ulaştı; güvenli toplanma alanına zamanında çıkılamadı.");
+            return;
+        }
+        if (Time.frameCount % 10 == 0)
+            RefreshHud();
+    }
+
+    private void FailWildfireScenario(string reason)
+    {
+        if (CurrentPhase == Phase.Completed)
+            return;
+        CurrentPhase = Phase.Completed;
+        GameManager.Instance?.ShowResults();
+        ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.SelectedProvince : null;
+        bootstrap.ShowResults(Score,
+            (province != null ? province.name + " orman yangını tatbikatı başarısız oldu. " : "Orman yangını tatbikatı başarısız oldu. ")
+                + reason + " Tahliye yolunu daha erken kullanarak tekrar dene.", "GÜVENLİ ALANA ULAŞILAMADI");
     }
 
     private void StartFlooding()
@@ -1058,13 +1319,15 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (CurrentPhase == Phase.Preparation && preparationCountdownStarted)
         {
             preparationCountdownRemaining = Mathf.Max(0f, preparationCountdownRemaining - Time.deltaTime);
-            if (floodScenario || landslideScenario)
+            if (floodScenario || landslideScenario || wildfireScenario)
             {
                 int displayedCountdown = Mathf.CeilToInt(preparationCountdownRemaining);
                 if (displayedCountdown > 0 && displayedCountdown != lastFloodCountdownDisplayed)
                 {
                     lastFloodCountdownDisplayed = displayedCountdown;
-                    bootstrap.ShowNotice(landslideScenario
+                    bootstrap.ShowNotice(wildfireScenario
+                        ? "Tahliye tatbikatı " + displayedCountdown + " saniye içinde başlayacak."
+                        : landslideScenario
                         ? "Hazırlık tamamlandı. Heyelan senaryosu " + displayedCountdown + " saniye içinde başlayacak."
                         : "Hazırlık tamamlandı. Taşkın suyu yaklaşık " + displayedCountdown
                             + " saniye içinde yükselmeye başlayacak.");
@@ -1089,6 +1352,12 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (landslideScenario)
         {
             UpdateLandslide();
+            return;
+        }
+
+        if (wildfireScenario)
+        {
+            UpdateWildfire();
             return;
         }
 
@@ -1438,7 +1707,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.SelectedProvince : null;
         int plateCode = province != null ? province.plateCode : 6;
         string disasterKey = "TurkiyeAfet." + ProvinceManager.GetDisasterSaveName(
-            landslideScenario ? GameManager.DisasterType.Landslide
+            wildfireScenario ? GameManager.DisasterType.Wildfire
+                : landslideScenario ? GameManager.DisasterType.Landslide
                 : floodScenario ? GameManager.DisasterType.Flood : GameManager.DisasterType.Earthquake);
         string completedKey = ProvinceManager.ProgressKey(disasterKey + ".Completed", plateCode);
         string lastScoreKey = ProvinceManager.ProgressKey(disasterKey + ".LastScore", plateCode);
@@ -1449,7 +1719,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         PlayerPrefs.SetInt(bestScoreKey, Mathf.Max(Score, PlayerPrefs.GetInt(bestScoreKey, 0)));
         PlayerPrefs.SetInt("TurkiyeAfet.LastProvince", plateCode);
         PlayerPrefs.SetInt("TurkiyeAfet.LastCompletedProvince", plateCode);
-        if (!floodScenario && !landslideScenario && plateCode == 6)
+        if (!floodScenario && !landslideScenario && !wildfireScenario && plateCode == 6)
         {
             // Keep the save keys from the first Ankara-only prototype readable.
             PlayerPrefs.SetInt("TurkiyeAfet.Deprem.LastScore", Score);
@@ -1459,7 +1729,14 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         GameManager.Instance?.ShowResults();
         string review;
-        if (landslideScenario)
+        if (wildfireScenario)
+        {
+            review = (province != null ? province.name + "  •  PLAKA " + province.PlateLabel + ". " : "") +
+                "Dumanı fark edip 112'ye bildirdin. " +
+                (wildfireEvacuated ? "Açık alandaki güvenli toplanma alanına ulaşıp bekledin. " : "Güvenli alana ulaşamadın. ") +
+                "Yangın hattına yaklaşmadın; tahliye ve ekip talimatlarını izledin.";
+        }
+        else if (landslideScenario)
         {
             review = (province != null ? province.name + "  •  PLAKA " + province.PlateLabel + ". " : "") +
                 "Heyelan öncesi: " + landslidePreparationIndex + "/" + landslidePreparationTasks.Count + " hazırlık adımı. " +
@@ -1500,6 +1777,28 @@ public sealed class PrototypeScenario : MonoBehaviour
     {
         if (bootstrap == null)
             return;
+
+        if (wildfireScenario)
+        {
+            PrototypeInteractable target = CurrentPreparationTarget;
+            if (target != null) target.SetGuidance(CurrentPhase == Phase.Preparation);
+            string phase = CurrentPhase switch
+            {
+                Phase.Preparation => "ORMAN YANGINI / İLK İHBAR",
+                Phase.Wildfire => "ORMAN YANGINI ANI  •  " + Mathf.CeilToInt(Mathf.Max(0f, WildfireRunDuration - wildfireTimer)) + " sn",
+                _ => "TAHLİYE TAMAMLANDI"
+            };
+            string wildfireTasks = CurrentPhase == Phase.Preparation
+                ? "DUMANI UZAKTAN FARK ET\nYangına yaklaşmadan anons cihazından 112'ye konumu bildir.\n"
+                    + (target != null ? "<color=#5ED7C4>▶ AKTİF HEDEF: " + target.ActionName + "</color>" : "✓ İhbar tamamlandı")
+                : "ALEVLERDEN UZAKLAŞ\nAçık patikayı takip ederek yeşil fenerli toplanma alanına koş.\nYangına müdahale etme; güvenli alana gelince orada kal.\n"
+                    + (wildfireEvacuated ? "✓ Güvenli alana ulaştın — " + Mathf.Max(0f, WildfireSafeHoldDuration - wildfireSafeHoldTimer).ToString("0.0") + " sn bekle"
+                        : "○ Tahliye alanına: yeşil feneri izle");
+            bootstrap.RefreshHud(phase, wildfireTasks,
+                wildfireEvacuated ? "✓ Güvenli toplanma alanında kal" : "○ Açık alandaki güvenli bölgeye tahliye ol",
+                "", "", "○ Alev bölgesine geri dönme; ekipleri bekle", Score, 0f);
+            return;
+        }
 
         if (landslideScenario)
         {
