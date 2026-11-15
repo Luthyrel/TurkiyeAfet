@@ -5,8 +5,8 @@ using UnityEngine.InputSystem;
 
 public sealed class PrototypeScenario : MonoBehaviour
 {
-    public enum Phase { Preparation, Shaking, Landslide, Flooding, Wildfire, Blackout, Trapped, Aftershock, Completed }
-    private enum FloodDialogueMode { None, EmergencyCall, OfficialBulletin, WildfireCall }
+    public enum Phase { Preparation, Shaking, Landslide, Flooding, Wildfire, Storm, Blackout, Trapped, Aftershock, Completed }
+    private enum FloodDialogueMode { None, EmergencyCall, OfficialBulletin, WildfireCall, StormCall }
 
     private const float QuakeDuration = 10f;
     private const float RequiredHoldDuration = 5f;
@@ -24,6 +24,8 @@ public sealed class PrototypeScenario : MonoBehaviour
     private const float LandslideRunDuration = 18f;
     private const float WildfireRunDuration = 24f;
     private const float WildfireSafeHoldDuration = 3f;
+    private const float StormDuration = 28f;
+    private const float StormGustInterval = 3.8f;
 
     private static readonly string[] TrappedQuestions =
     {
@@ -62,6 +64,8 @@ public sealed class PrototypeScenario : MonoBehaviour
     private readonly List<PrototypeInteractable> landslidePreparationTasks = new List<PrototypeInteractable>();
     private readonly List<PrototypeInteractable> landslideAfterTasks = new List<PrototypeInteractable>();
     private readonly List<PrototypeInteractable> wildfirePreparationTasks = new List<PrototypeInteractable>();
+    private readonly List<PrototypeInteractable> stormPreparationTasks = new List<PrototypeInteractable>();
+    private readonly List<PrototypeInteractable> stormAfterTasks = new List<PrototypeInteractable>();
     private readonly List<Rigidbody> looseObjects = new List<Rigidbody>();
     private readonly Dictionary<Rigidbody, PrototypeInteractable> furniture = new Dictionary<Rigidbody, PrototypeInteractable>();
 
@@ -122,12 +126,24 @@ public sealed class PrototypeScenario : MonoBehaviour
     private int wildfireCorrectChoice;
     private int wildfireShuffledStep = -1;
     private string[] wildfireShuffledOptions;
+    private bool stormScenario;
+    private bool stormSheltered;
+    private bool stormWasSheltered;
+    private bool stormShelterAwarded;
+    private float stormTimer;
+    private float stormGustTimer;
+    private Vector3 stormShelterCenter = new Vector3(0f, 0f, 5f);
+    private int stormPreparationIndex;
+    private int stormCallCorrectChoice;
+    private int stormShuffledStep = -1;
+    private string[] stormShuffledOptions;
 
     public Phase CurrentPhase { get; private set; } = Phase.Preparation;
     public bool IsShaking => CurrentPhase == Phase.Shaking;
     public bool IsFloodScenario => floodScenario;
     public bool IsLandslideScenario => landslideScenario;
     public bool IsWildfireScenario => wildfireScenario;
+    public bool IsStormScenario => stormScenario;
     public bool IsLandslideActive => landslideScenario && CurrentPhase == Phase.Landslide;
     public bool IsLandslideEvacuated => landslideEvacuated;
     public Vector3 LandslideSafePosition => landslideSafeCenter;
@@ -201,6 +217,16 @@ public sealed class PrototypeScenario : MonoBehaviour
                         ? wildfirePreparationTasks[wildfirePreparationIndex] : null;
                 return null;
             }
+            if (stormScenario)
+            {
+                if (CurrentPhase == Phase.Preparation)
+                    return stormPreparationIndex < stormPreparationTasks.Count
+                        ? stormPreparationTasks[stormPreparationIndex] : null;
+                if (CurrentPhase == Phase.Aftershock && stormPreparationIndex >= stormPreparationTasks.Count
+                    && stormAfterTasks.Count > 0)
+                    return stormAfterTasks[0];
+                return null;
+            }
             if (floodScenario)
             {
                 if (CurrentPhase == Phase.Preparation)
@@ -253,6 +279,25 @@ public sealed class PrototypeScenario : MonoBehaviour
         wildfireScenario = true;
         wildfireSafeCenter = safeCenter;
         CurrentPhase = Phase.Preparation;
+    }
+
+    public void ConfigureStorm(Vector3 shelterCenter)
+    {
+        stormScenario = true;
+        stormShelterCenter = shelterCenter;
+        CurrentPhase = Phase.Preparation;
+    }
+
+    public void AddStormPreparationTask(PrototypeInteractable task)
+    {
+        if (task != null && !stormPreparationTasks.Contains(task))
+            stormPreparationTasks.Add(task);
+    }
+
+    public void SetStormAfterTask(PrototypeInteractable task)
+    {
+        if (task != null && !stormAfterTasks.Contains(task))
+            stormAfterTasks.Add(task);
     }
 
     public void AddWildfirePreparationTask(PrototypeInteractable task)
@@ -331,6 +376,12 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (wildfireScenario)
         {
             TryInteractWildfire(target);
+            return;
+        }
+
+        if (stormScenario)
+        {
+            TryInteractStorm(target);
             return;
         }
 
@@ -517,6 +568,137 @@ public sealed class PrototypeScenario : MonoBehaviour
         }
 
         BeginWildfireEmergencyCall(target);
+    }
+
+    private void TryInteractStorm(PrototypeInteractable target)
+    {
+        if (target != null && target.Action == PrototypeAction.ToggleStormDoor
+            && (CurrentPhase == Phase.Preparation || CurrentPhase == Phase.Storm || CurrentPhase == Phase.Aftershock))
+        {
+            bool isOpen = target.ToggleStormDoor();
+            PrototypeAudio.PlayDoorOpen();
+            bootstrap.ShowNotice(isOpen
+                ? "Kapıyı açtın. İç odaya gir; fırtına sırasında kapıyı kapatıp pencerelerden uzakta kal."
+                : "Giriş kapısını kapattın. Sağlam binanın iç odasında kal.");
+            RefreshHud();
+            return;
+        }
+
+        PrototypeInteractable expected = CurrentPreparationTarget;
+        if (target == null || target != expected)
+        {
+            bootstrap.ShowNotice(expected != null
+                ? "Önce aktif fırtına hazırlığını tamamla: " + expected.ActionName + "."
+                : CurrentPhase == Phase.Storm
+                    ? "Rüzgâr ve uçuşan cisimler sürüyor. Pencerelerden uzak iç odada kal."
+                    : CurrentPhase == Phase.Aftershock
+                        ? "112 ihbarı için sığınağın içindeki acil telefona git."
+                        : "Bu hedef şu an aktif değil.");
+            return;
+        }
+
+        if (CurrentPhase == Phase.Preparation)
+        {
+            target.CompleteAction();
+            stormPreparationIndex++;
+            Score += 70;
+            PrototypeAudio.PlayTaskComplete();
+            bootstrap.ShowNotice("Fırtına hazırlığı tamamlandı. +70 puan.");
+            if (PreparationComplete())
+                StartPreparationCountdown();
+        }
+        else if (CurrentPhase == Phase.Aftershock && target.Action == PrototypeAction.CallForStormHelp)
+        {
+            if (!IsPlayerInStormShelter())
+            {
+                bootstrap.ShowNotice("Kopmuş hat ve fırtına sonrası tehlikelerden uzakta, sağlam yapının içinde kal.");
+                return;
+            }
+            BeginStormEmergencyCall(target);
+        }
+        RefreshHud();
+    }
+
+    private void BeginStormEmergencyCall(PrototypeInteractable target)
+    {
+        if (floodDialogueMode != FloodDialogueMode.None)
+            return;
+        floodDialogueTarget = target;
+        floodDialogueMode = FloodDialogueMode.StormCall;
+        floodDialogueStep = 0;
+        stormShuffledStep = -1;
+        stormShuffledOptions = null;
+        target.SetFloodPhoneRaised(true);
+        bootstrap.SetPlayerControls(false);
+        PrototypeAudio.PlayPhoneRing();
+        bootstrap.ShowNotice("112 Acil Çağrı Merkezi aranıyor...");
+        StartCoroutine(ConnectStormEmergencyCall());
+    }
+
+    private IEnumerator ConnectStormEmergencyCall()
+    {
+        yield return new WaitForSecondsRealtime(1.25f);
+        PrototypeAudio.PlayPhoneConnect();
+        ShowStormCallStep(string.Empty);
+    }
+
+    private void ShowStormCallStep(string feedback)
+    {
+        if (floodDialogueStep == 0)
+        {
+            PresentStormCallOptions(new[]
+            {
+                "Çanakkale, simülasyondaki Sahil Mahallesi, kıyı yolunun doğu ucu; ev numarası 12. Sağlam evin içindeyim.",
+                "Çanakkale'de sahil tarafındayım. Tam sokağı bilmiyorum; ekipler yaklaşınca dışarı çıkıp tarif ederim.",
+                "Önce fırtınanın hangi yönden estiğini anlatayım; adresi görüşmenin sonunda bulmaya çalışırım."
+            }, 0, feedback);
+        }
+        else if (floodDialogueStep == 1)
+        {
+            PresentStormCallOptions(new[]
+            {
+                "Yakında kopmuş elektrik hattı var. Gördüğüm yeri ve varsa yaralı/mahsur kişileri bildiririm; hatta dokunmadım.",
+                "Kablo yerde ama kıvılcım görmedim; elektrik kesilmiş olabilir. Güvenli mesafeden kontrol ederim.",
+                "Kopan hattı kendim kenara çeker, yolu açtıktan sonra ekipleri ararım."
+            }, 0, feedback);
+        }
+        else
+        {
+            PresentStormCallOptions(new[]
+            {
+                "Binanın içinde, pencerelerden ve hattan uzakta kalır; ekiplerin ve resmî duyuruların talimatını beklerim.",
+                "Rüzgâr hafiflediği için dışarı çıkar, çevredeki hasarı ve kabloyu yakından incelerim.",
+                "Yolu kapatan dalları kaldırıp komşuların evlerini kontrol etmek için dışarı çıkarım."
+            }, 0, feedback);
+        }
+    }
+
+    private void PresentStormCallOptions(string[] options, int correctIndex, string feedback)
+    {
+        if (stormShuffledOptions == null || stormShuffledStep != floodDialogueStep)
+        {
+            List<string> shuffled = new List<string>(options);
+            int correctOption = correctIndex;
+            for (int i = shuffled.Count - 1; i > 0; i--)
+            {
+                int swapIndex = UnityEngine.Random.Range(0, i + 1);
+                string temp = shuffled[i];
+                shuffled[i] = shuffled[swapIndex];
+                shuffled[swapIndex] = temp;
+                if (correctOption == i) correctOption = swapIndex;
+                else if (correctOption == swapIndex) correctOption = i;
+            }
+            stormShuffledStep = floodDialogueStep;
+            stormShuffledOptions = shuffled.ToArray();
+            stormCallCorrectChoice = correctOption;
+        }
+
+        string question = floodDialogueStep == 0
+            ? "Operatör: Fırtına sonrası tehlikeyi hangi mahalle ve yol bölümünde gördünüz? Güvenli bir yerde misiniz?"
+            : floodDialogueStep == 1
+                ? "Operatör: Kopmuş hattın veya yaralı olabilecek kişilerin yeri ve durumu hakkında ne biliyorsunuz?"
+                : "Operatör: Görüşmeden sonra nerede kalacaksınız ve nasıl hareket edeceksiniz?";
+        bootstrap.ShowFloodDialogue("112 ACİL ÇAĞRI MERKEZİ", question, stormShuffledOptions, feedback);
     }
 
     private void BeginWildfireEmergencyCall(PrototypeInteractable target)
@@ -840,6 +1022,8 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         int correctChoice = floodDialogueMode == FloodDialogueMode.WildfireCall
             ? wildfireCorrectChoice
+            : floodDialogueMode == FloodDialogueMode.StormCall
+            ? stormCallCorrectChoice
             : floodDialogueMode == FloodDialogueMode.OfficialBulletin
             ? 1
             : floodDialogueStep == 0 ? 1
@@ -853,6 +1037,8 @@ public sealed class PrototypeScenario : MonoBehaviour
             PrototypeAudio.PlayAnswerWrong();
             string feedback = floodDialogueMode == FloodDialogueMode.WildfireCall
                 ? "Operatör: Yaklaşmayın. Konumu ve gördüğünüz bilgileri net biçimde aktarın; güvenli yerde kalın."
+                : floodDialogueMode == FloodDialogueMode.StormCall
+                ? "Operatör: Kopmuş hatta ve fırtına hasarına yaklaşmayın. Bildiğiniz konumu ve doğrulayabildiğiniz bilgileri güvenli yerden aktarın."
                 : floodDialogueMode == FloodDialogueMode.EmergencyCall
                     ? "Operatör: Güvenli alandan ayrılmayın. Konumunuzu ve içeridekilerin durumunu bildirin."
                     : "Duyuru: Su çekilse bile yollar ve yapılar tehlikeli olabilir. Güvenli alanda kalın.";
@@ -860,6 +1046,8 @@ public sealed class PrototypeScenario : MonoBehaviour
                 ShowFloodCallStep(feedback);
             else if (floodDialogueMode == FloodDialogueMode.WildfireCall)
                 ShowWildfireCallStep(feedback);
+            else if (floodDialogueMode == FloodDialogueMode.StormCall)
+                ShowStormCallStep(feedback);
             else
                 bootstrap.ShowFloodDialogue("RESMÎ TAŞKIN BİLGİLENDİRMESİ",
                     "Su seviyesi düştü; ancak dere yatağına, su basmış yola veya hasarlı binaya yaklaşmayın. Yetkililerin talimatlarını bekleyin.",
@@ -872,12 +1060,16 @@ public sealed class PrototypeScenario : MonoBehaviour
         }
 
         PrototypeAudio.PlayAnswerCorrect();
-        if ((floodDialogueMode == FloodDialogueMode.EmergencyCall || floodDialogueMode == FloodDialogueMode.WildfireCall)
+        if ((floodDialogueMode == FloodDialogueMode.EmergencyCall
+                || floodDialogueMode == FloodDialogueMode.WildfireCall
+                || floodDialogueMode == FloodDialogueMode.StormCall)
             && floodDialogueStep < 2)
         {
             floodDialogueStep++;
             if (floodDialogueMode == FloodDialogueMode.WildfireCall)
                 ShowWildfireCallStep(string.Empty);
+            else if (floodDialogueMode == FloodDialogueMode.StormCall)
+                ShowStormCallStep(string.Empty);
             else
                 ShowFloodCallStep(string.Empty);
             return;
@@ -885,7 +1077,9 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         PrototypeInteractable completedTarget = floodDialogueTarget;
         FloodDialogueMode completedMode = floodDialogueMode;
-        if (completedMode == FloodDialogueMode.EmergencyCall || completedMode == FloodDialogueMode.WildfireCall)
+        if (completedMode == FloodDialogueMode.EmergencyCall
+            || completedMode == FloodDialogueMode.WildfireCall
+            || completedMode == FloodDialogueMode.StormCall)
             completedTarget.SetFloodPhoneRaised(false);
         floodDialogueMode = FloodDialogueMode.None;
         floodDialogueTarget = null;
@@ -900,6 +1094,14 @@ public sealed class PrototypeScenario : MonoBehaviour
             bootstrap.ShowNotice("Dumanı ve konumu 112'ye bildirdin. Yangına yaklaşmadan tahliye patikasını izle. +100 puan.");
             if (PreparationComplete()) StartPreparationCountdown();
             RefreshHud();
+        }
+        else if (completedMode == FloodDialogueMode.StormCall)
+        {
+            completedTarget.CompleteAction();
+            Score += 120;
+            PrototypeAudio.PlayTaskComplete();
+            bootstrap.ShowNotice("Kopmuş elektrik hattını ve konumunu 112'ye bildirdin. Hatta yaklaşmadan içeride kal ve resmî talimatları bekle. +120 puan.");
+            FinishScenario();
         }
         else
             CompleteFloodAfterTask(completedTarget,
@@ -1025,9 +1227,11 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         preparationCountdownStarted = true;
         preparationCountdownRemaining = PreparationCountdownDuration;
-        lastFloodCountdownDisplayed = floodScenario || landslideScenario || wildfireScenario
+        lastFloodCountdownDisplayed = floodScenario || landslideScenario || wildfireScenario || stormScenario
             ? Mathf.CeilToInt(preparationCountdownRemaining) : -1;
-        bootstrap.ShowNotice(wildfireScenario
+        bootstrap.ShowNotice(stormScenario
+            ? "Fırtına uyarısı başladı. Dışarıdaki eşyaları güvene al ve panjurları kapat; 5 saniye içinde fırtına başlayacak."
+            : wildfireScenario
             ? "İhbar alındı. Tahliye tatbikatı 5 saniye içinde başlayacak."
             : landslideScenario
             ? "Hazırlık tamamlandı. Heyelan senaryosu yaklaşık 5 saniye içinde başlayacak."
@@ -1047,6 +1251,10 @@ public sealed class PrototypeScenario : MonoBehaviour
             return wildfirePreparationTasks.Count > 0
                 && wildfirePreparationIndex >= wildfirePreparationTasks.Count;
 
+        if (stormScenario)
+            return stormPreparationTasks.Count > 0
+                && stormPreparationIndex >= stormPreparationTasks.Count;
+
         if (preparationTasks.Count == 0)
             return false;
 
@@ -1065,6 +1273,9 @@ public sealed class PrototypeScenario : MonoBehaviour
             return CorePreparationTasksComplete();
         if (wildfireScenario)
             return CorePreparationTasksComplete();
+        if (stormScenario)
+            return stormPreparationTasks.Count > 0
+                && stormPreparationIndex >= stormPreparationTasks.Count;
         if (floodScenario)
             return floodPreparationTasks.Count > 0 && floodPreparationIndex >= floodPreparationTasks.Count;
         return CorePreparationTasksComplete()
@@ -1094,6 +1305,12 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (wildfireScenario)
         {
             StartWildfire();
+            return;
+        }
+
+        if (stormScenario)
+        {
+            StartStorm();
             return;
         }
 
@@ -1157,6 +1374,129 @@ public sealed class PrototypeScenario : MonoBehaviour
         bootstrap.BeginWildfireVisual();
         bootstrap.ShowNotice("Orman yangını başladı. Alevlere yaklaşma veya söndürmeye çalışma; açık tahliye patikasından yeşil fenerli toplanma alanına git.");
         RefreshHud();
+    }
+
+    private void StartStorm()
+    {
+        CurrentPhase = Phase.Storm;
+        preparationCountdownStarted = false;
+        preparationCountdownRemaining = 0f;
+        stormTimer = 0f;
+        stormGustTimer = StormGustInterval;
+        stormSheltered = false;
+        stormWasSheltered = false;
+        stormShelterAwarded = false;
+        GameManager.Instance?.StartScenario();
+        foreach (PrototypeInteractable task in stormPreparationTasks)
+            if (task != null) task.SetGuidance(false);
+        bootstrap.BeginStormVisual();
+        bootstrap.ShowNotice("Fırtına başladı! Ağaçlardan, pencerelerden ve direklerden uzaklaş. En yakın sağlam binanın penceresiz iç bölümüne gir ve fırtına boyunca dışarı çıkma.");
+        RefreshHud();
+    }
+
+    private void UpdateStorm()
+    {
+        if (CurrentPhase != Phase.Storm)
+            return;
+
+        stormTimer += Time.deltaTime;
+        bootstrap.UpdateStormVisual(stormTimer);
+        bool isSheltered = IsPlayerInStormShelter();
+        bool isInsideHouse = IsPlayerInsideStormHouse();
+        if (isSheltered)
+        {
+            if (!stormShelterAwarded)
+            {
+                stormShelterAwarded = true;
+                Score += 160;
+                PrototypeAudio.PlayTaskComplete();
+                bootstrap.ShowNotice("Pencerelerden uzaktaki sağlam iç odaya sığındın. Fırtına dinene kadar içeride kal. +160 puan.");
+            }
+            stormSheltered = true;
+            stormWasSheltered = true;
+        }
+        else
+        {
+            if (stormWasSheltered)
+            {
+                stormWasSheltered = false;
+                stormSheltered = false;
+                if (!isInsideHouse)
+                {
+                    Score = Mathf.Max(0, Score - 35);
+                    bootstrap.ShowNotice("Fırtına sürerken güvenli alanın dışına çıktın. Hemen sağlam binanın içine dön. -35 puan.");
+                }
+            }
+
+            if (!isInsideHouse)
+            {
+                float gustEnvelope = 0.30f + 0.70f * Mathf.Max(0f, Mathf.Sin(stormTimer * 1.75f));
+                Vector3 wind = new Vector3(1f, 0f, 0.18f).normalized;
+                if (player != null)
+                {
+                    player.ApplyStormWind(wind * (gustEnvelope * Time.deltaTime * 0.78f));
+                    player.SetShake(gustEnvelope * 0.004f);
+                }
+                stormGustTimer -= Time.deltaTime;
+                if (stormGustTimer <= 0f)
+                {
+                    stormGustTimer = StormGustInterval + Mathf.Sin(stormTimer * 0.7f) * 0.8f;
+                    bootstrap.ShowNotice("Kuvvetli rüzgâr açık alanda dengenizi bozuyor. Sağlam binanın içine sığın.");
+                }
+            }
+            else
+            {
+                player?.SetShake(0f);
+                stormGustTimer = StormGustInterval;
+            }
+        }
+
+        if (stormTimer >= StormDuration)
+        {
+            if (!stormSheltered || !IsPlayerInStormShelter())
+            {
+                FailStormScenario("Fırtına dinene kadar sağlam yapının içinde ve pencerelerden uzakta kalınamadı.");
+                return;
+            }
+
+            CurrentPhase = Phase.Aftershock;
+            bootstrap.EndStormVisual();
+            bootstrap.ShowNotice("Fırtına zayıfladı. Dışarı çıkma; iç odadaki acil telefondan 112'ye kopmuş hattı ve konumunu bildir.");
+            RefreshHud();
+            return;
+        }
+
+        if (Time.frameCount % 8 == 0)
+            RefreshHud();
+    }
+
+    private bool IsPlayerInStormShelter()
+    {
+        if (player == null)
+            return false;
+        Vector3 offset = player.transform.position - stormShelterCenter;
+        return Mathf.Abs(offset.x) <= 3.65f && Mathf.Abs(offset.z) <= 3.65f;
+    }
+
+    private bool IsPlayerInsideStormHouse()
+    {
+        if (player == null)
+            return false;
+        Vector3 position = player.transform.position;
+        return Mathf.Abs(position.x) <= 4.7f && position.z >= -1.75f && position.z <= 7.75f;
+    }
+
+    private void FailStormScenario(string reason)
+    {
+        if (CurrentPhase == Phase.Completed)
+            return;
+        CurrentPhase = Phase.Completed;
+        bootstrap.EndStormVisual();
+        GameManager.Instance?.ShowResults();
+        ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.SelectedProvince : null;
+        bootstrap.ShowResults(Score,
+            (province != null ? province.name + " fırtına tatbikatı başarısız oldu. " : "Fırtına tatbikatı başarısız oldu. ")
+                + reason + " Fırtına uyarısında sağlam binanın içine daha erken sığınarak tekrar dene.", "FIRTINADA GÜVENLİ ALANA SIĞINILAMADI");
     }
 
     private void UpdateWildfire()
@@ -1319,13 +1659,15 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (CurrentPhase == Phase.Preparation && preparationCountdownStarted)
         {
             preparationCountdownRemaining = Mathf.Max(0f, preparationCountdownRemaining - Time.deltaTime);
-            if (floodScenario || landslideScenario || wildfireScenario)
+            if (floodScenario || landslideScenario || wildfireScenario || stormScenario)
             {
                 int displayedCountdown = Mathf.CeilToInt(preparationCountdownRemaining);
                 if (displayedCountdown > 0 && displayedCountdown != lastFloodCountdownDisplayed)
                 {
                     lastFloodCountdownDisplayed = displayedCountdown;
-                    bootstrap.ShowNotice(wildfireScenario
+                    bootstrap.ShowNotice(stormScenario
+                        ? "Fırtına " + displayedCountdown + " saniye içinde başlayacak. Sağlam binanın iç odasına sığınmaya hazır ol."
+                        : wildfireScenario
                         ? "Tahliye tatbikatı " + displayedCountdown + " saniye içinde başlayacak."
                         : landslideScenario
                         ? "Hazırlık tamamlandı. Heyelan senaryosu " + displayedCountdown + " saniye içinde başlayacak."
@@ -1358,6 +1700,12 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (wildfireScenario)
         {
             UpdateWildfire();
+            return;
+        }
+
+        if (stormScenario)
+        {
+            UpdateStorm();
             return;
         }
 
@@ -1707,7 +2055,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.SelectedProvince : null;
         int plateCode = province != null ? province.plateCode : 6;
         string disasterKey = "TurkiyeAfet." + ProvinceManager.GetDisasterSaveName(
-            wildfireScenario ? GameManager.DisasterType.Wildfire
+            stormScenario ? GameManager.DisasterType.Storm
+                : wildfireScenario ? GameManager.DisasterType.Wildfire
                 : landslideScenario ? GameManager.DisasterType.Landslide
                 : floodScenario ? GameManager.DisasterType.Flood : GameManager.DisasterType.Earthquake);
         string completedKey = ProvinceManager.ProgressKey(disasterKey + ".Completed", plateCode);
@@ -1719,7 +2068,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         PlayerPrefs.SetInt(bestScoreKey, Mathf.Max(Score, PlayerPrefs.GetInt(bestScoreKey, 0)));
         PlayerPrefs.SetInt("TurkiyeAfet.LastProvince", plateCode);
         PlayerPrefs.SetInt("TurkiyeAfet.LastCompletedProvince", plateCode);
-        if (!floodScenario && !landslideScenario && !wildfireScenario && plateCode == 6)
+        if (!floodScenario && !landslideScenario && !wildfireScenario && !stormScenario && plateCode == 6)
         {
             // Keep the save keys from the first Ankara-only prototype readable.
             PlayerPrefs.SetInt("TurkiyeAfet.Deprem.LastScore", Score);
@@ -1729,7 +2078,16 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         GameManager.Instance?.ShowResults();
         string review;
-        if (wildfireScenario)
+        if (stormScenario)
+        {
+            review = (province != null ? province.name + "  •  PLAKA " + province.PlateLabel + ". " : "")
+                + "Fırtına öncesi: " + stormPreparationIndex + "/" + stormPreparationTasks.Count + " hazırlık adımı. "
+                + (stormShelterAwarded ? "Fırtına sırasında sağlam yapının iç bölümünde korundun. " : "Sığınağa zamanında ulaşamadın. ")
+                + (stormAfterTasks.Count > 0 && stormAfterTasks[0].IsComplete
+                    ? "Fırtına sonrası kopmuş hattı 112'ye bildirip hattan uzak kaldın. "
+                    : "Fırtına sonrası kopmuş hatlara yaklaşma; güvenli yerden 112'ye bildir.");
+        }
+        else if (wildfireScenario)
         {
             review = (province != null ? province.name + "  •  PLAKA " + province.PlateLabel + ". " : "") +
                 "Dumanı fark edip 112'ye bildirdin. " +
@@ -1777,6 +2135,44 @@ public sealed class PrototypeScenario : MonoBehaviour
     {
         if (bootstrap == null)
             return;
+
+        if (stormScenario)
+        {
+            PrototypeInteractable target = CurrentPreparationTarget;
+            if (target != null) target.SetGuidance(
+                CurrentPhase == Phase.Preparation || CurrentPhase == Phase.Aftershock);
+            string phase = CurrentPhase switch
+            {
+                Phase.Preparation => "FIRTINA ÖNCESİ HAZIRLIK",
+                Phase.Storm => "FIRTINA ANI  •  " + Mathf.CeilToInt(Mathf.Max(0f, StormDuration - stormTimer)) + " sn",
+                Phase.Aftershock => "FIRTINA SONRASI",
+                _ => "TATBİKAT TAMAMLANDI"
+            };
+            string stormTasks;
+            if (CurrentPhase == Phase.Preparation)
+            {
+                stormTasks = "FIRTINA ÖNCESİ HAZIRLIK\nDışarıdaki hafif eşyaları güvene al ve panjurları kapat.\n";
+                AppendStormTasks(ref stormTasks, stormPreparationTasks, stormPreparationIndex, false);
+            }
+            else if (CurrentPhase == Phase.Storm)
+            {
+                stormTasks = "ŞİDDETLİ RÜZGÂR VE YAĞIŞ\nAğaçlardan, pencerelerden ve elektrik direklerinden uzak dur. Sağlam binanın iç odasına gir; camlardan uzak kal ve fırtına dinene kadar çıkma."
+                    + (stormSheltered ? "\n✓ İç odada güvendesin; kapıyı kapat ve fırtına geçene kadar burada kal." : "\n○ Kapıdan gir, kapıyı kapat ve iç odaya sığın.");
+            }
+            else if (CurrentPhase == Phase.Aftershock)
+            {
+                stormTasks = "FIRTINA SONRASI\nKopmuş kabloya ve devrilmiş ağaçlara yaklaşma. İçerideki acil telefondan 112'ye konum ve tehlikeyi bildir.\n";
+                AppendStormTasks(ref stormTasks, stormAfterTasks, 0, true);
+            }
+            else
+                stormTasks = "Fırtına tatbikatı tamamlandı.";
+
+            bootstrap.RefreshHud(phase, stormTasks,
+                stormSheltered || CurrentPhase == Phase.Aftershock ? "✓ Sağlam yapının iç odasında kal" : "○ Pencerelerden uzak iç odaya sığın",
+                "", "", CurrentPhase == Phase.Aftershock ? "○ 112'ye kopmuş hattı bildir; dışarı çıkma" : "○ Fırtına ve hatlardan uzak dur",
+                Score, 0f);
+            return;
+        }
 
         if (wildfireScenario)
         {
@@ -1959,6 +2355,24 @@ public sealed class PrototypeScenario : MonoBehaviour
             }
             else
                 text += (task.IsComplete ? "✓ " : "○ ") + task.ActionName;
+            if (i < tasks.Count - 1)
+                text += "\n";
+        }
+    }
+
+    private void AppendStormTasks(ref string text, List<PrototypeInteractable> tasks, int activeIndex, bool aftershock)
+    {
+        for (int i = 0; i < tasks.Count; i++)
+        {
+            PrototypeInteractable task = tasks[i];
+            if (task == null)
+                continue;
+            bool active = aftershock ? i == 0 && CurrentPhase == Phase.Aftershock
+                : i == activeIndex && CurrentPhase == Phase.Preparation;
+            task.SetGuidance(active);
+            text += active
+                ? "<color=#5ED7C4>▶ AKTİF HEDEF: " + task.ActionName + "</color>"
+                : (task.IsComplete ? "✓ " : "○ ") + task.ActionName;
             if (i < tasks.Count - 1)
                 text += "\n";
         }

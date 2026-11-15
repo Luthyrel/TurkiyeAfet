@@ -264,7 +264,8 @@ public sealed class ProvinceManager : MonoBehaviour
             return true;
         return HasAnyCompletedScenario(GameManager.DisasterType.Flood)
             || HasAnyCompletedScenario(GameManager.DisasterType.Landslide)
-            || HasAnyCompletedScenario(GameManager.DisasterType.Wildfire);
+            || HasAnyCompletedScenario(GameManager.DisasterType.Wildfire)
+            || HasAnyCompletedScenario(GameManager.DisasterType.Storm);
     }
 
     public bool HasAnyCompletedScenario(GameManager.DisasterType disaster)

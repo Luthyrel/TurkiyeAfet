@@ -20,7 +20,11 @@ public enum PrototypeAction
     ReviewLandslideRoute,
     CallForLandslideHelp,
     ReportWildfire,
-    CallForWildfireHelp
+    CallForWildfireHelp,
+    SecureStormLooseItems,
+    CloseStormShutters,
+    ToggleStormDoor,
+    CallForStormHelp
 }
 
 public sealed class PrototypeInteractable : MonoBehaviour
@@ -36,6 +40,9 @@ public sealed class PrototypeInteractable : MonoBehaviour
     [SerializeField] private Transform floodSwitchLever;
     [SerializeField] private Renderer floodSwitchIndicator;
     [SerializeField] private Transform floodPhoneHandset;
+    private Transform stormDoorPivot;
+    private Collider stormDoorCollider;
+    private bool stormDoorOpen;
 
     private Renderer[] renderers;
     private Color[] originalColors;
@@ -87,6 +94,33 @@ public sealed class PrototypeInteractable : MonoBehaviour
     public void ConfigureExitDoor(Transform panel)
     {
         exitDoorPanel = panel;
+    }
+
+    public void ConfigureStormDoor(Transform pivot, Collider doorCollider, bool initiallyOpen)
+    {
+        stormDoorPivot = pivot;
+        stormDoorCollider = doorCollider;
+        stormDoorOpen = initiallyOpen;
+        ApplyStormDoorState();
+    }
+
+    public bool ToggleStormDoor()
+    {
+        if (stormDoorPivot == null) return false;
+        stormDoorOpen = !stormDoorOpen;
+        ApplyStormDoorState();
+        actionName = stormDoorOpen ? "E ile kapıyı kapat" : "E ile kapıyı aç";
+        return stormDoorOpen;
+    }
+
+    private void ApplyStormDoorState()
+    {
+        if (stormDoorPivot != null)
+            stormDoorPivot.localRotation = Quaternion.Euler(0f, stormDoorOpen ? -90f : 0f, 0f);
+        if (stormDoorCollider != null)
+            // A swung-open door remains a solid object along the jamb, and its broad panel
+            // collider also keeps it targetable so the player can close it again.
+            stormDoorCollider.enabled = true;
     }
 
     public void ConfigureFloodSwitchVisual(Transform lever, Renderer indicator)

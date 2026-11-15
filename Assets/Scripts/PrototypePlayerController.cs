@@ -255,6 +255,12 @@ public sealed class PrototypePlayerController : MonoBehaviour
         shakeStrength = strength;
     }
 
+    public void ApplyStormWind(Vector3 displacement)
+    {
+        if (character != null && character.enabled && controlsEnabled)
+            character.Move(displacement);
+    }
+
     public bool IsInSafeZone(Vector3 center, float radius)
     {
         Vector3 offset = transform.position - center;
@@ -940,6 +946,12 @@ public sealed class PrototypePlayerController : MonoBehaviour
             return;
         }
 
+        if (target.Action == PrototypeAction.ToggleStormDoor)
+        {
+            PrototypeBootstrap.Instance.SetPrompt("Giriş kapısı  •  [E / Sol tık] " + target.ActionName);
+            return;
+        }
+
         if (target.Action == PrototypeAction.ShutGasValve || target.Action == PrototypeAction.OpenWindows)
         {
             PrototypeBootstrap.Instance.SetPrompt(scenario.IsPostQuake
@@ -1064,7 +1076,7 @@ public sealed class PrototypePlayerController : MonoBehaviour
         float rayDistance = interactionDistance + (thirdPerson ? cameraDistanceCurrent : 0f);
         Ray ray = playerCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
         RaycastHit[] hits = Physics.RaycastAll(ray, rayDistance, Physics.DefaultRaycastLayers,
-            QueryTriggerInteraction.Ignore);
+            QueryTriggerInteraction.Collide);
 
         bool foundValidCollider = false;
         RaycastHit nearestHit = default;
@@ -1075,6 +1087,8 @@ public sealed class PrototypePlayerController : MonoBehaviour
                 || hitCollider.transform.IsChildOf(transform)
                 || hitCollider.transform == playerCamera.transform
                 || hitCollider.transform.IsChildOf(playerCamera.transform))
+                continue;
+            if (hitCollider.isTrigger && hitCollider.GetComponentInParent<PrototypeInteractable>() == null)
                 continue;
 
             if (!foundValidCollider || hits[i].distance < nearestHit.distance)

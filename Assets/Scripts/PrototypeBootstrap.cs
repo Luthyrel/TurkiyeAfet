@@ -44,6 +44,18 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private readonly List<Vector3> wildfireTreeCanopies = new List<Vector3>();
     private Material wildfireSmokeMaterial;
     private Vector3 wildfireSafePosition;
+    private readonly List<Transform> stormTrees = new List<Transform>();
+    private readonly List<Quaternion> stormTreeBaseRotations = new List<Quaternion>();
+    private readonly List<Transform> stormClouds = new List<Transform>();
+    private readonly List<Vector3> stormCloudBasePositions = new List<Vector3>();
+    private readonly List<Transform> stormWaveCrests = new List<Transform>();
+    private readonly List<Vector3> stormWaveBasePositions = new List<Vector3>();
+    private readonly List<GameObject> stormPostEventObjects = new List<GameObject>();
+    private readonly List<ParticleSystem> stormRainSystems = new List<ParticleSystem>();
+    private ParticleSystem stormWindDebris;
+    private Light stormLightning;
+    private Transform stormPowerPolePivot;
+    private Vector3 stormShelterPosition = new Vector3(0f, 0f, 5f);
 
     public PrototypeScenario Scenario => scenario;
 
@@ -82,6 +94,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                     GameManager.DisasterType.Flood => ProvinceManager.Instance.GetFirstFloodProvincePlate(),
                     GameManager.DisasterType.Landslide => ProvinceManager.Instance.GetFirstLandslideTrainingProvincePlate(),
                     GameManager.DisasterType.Wildfire => 48,
+                    GameManager.DisasterType.Storm => ProvinceManager.Instance.GetFirstStormTrainingProvincePlate(),
                     _ => 6
                 };
             ProvinceManager.Instance.SelectProvince(savedPlate);
@@ -92,6 +105,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             GameManager.DisasterType.Flood => "Sel ve Taşkın Senaryosu",
             GameManager.DisasterType.Landslide => "Heyelan Farkındalık Senaryosu",
             GameManager.DisasterType.Wildfire => "Orman Yangını Tahliye Tatbikatı",
+            GameManager.DisasterType.Storm => "Fırtına Güvenli Barınma Tatbikatı",
             _ => "Deprem Senaryosu"
         };
         scenario = new GameObject(scenarioName).AddComponent<PrototypeScenario>();
@@ -101,6 +115,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             BuildLandslideWorld();
         else if (worldDisasterType == GameManager.DisasterType.Wildfire)
             BuildWildfireWorld();
+        else if (worldDisasterType == GameManager.DisasterType.Storm)
+            BuildStormWorld();
         else
             BuildWorld();
 
@@ -111,6 +127,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             GameManager.DisasterType.Flood => new Vector3(-8.6f, 0f, -2.6f),
             GameManager.DisasterType.Landslide => new Vector3(0f, 0f, 10f),
             GameManager.DisasterType.Wildfire => new Vector3(0f, 0f, 13f),
+            GameManager.DisasterType.Storm => new Vector3(0f, 0f, -7.5f),
             _ => new Vector3(-0.4f, 0f, -2.3f)
         };
         float playerYaw = worldDisasterType switch
@@ -118,6 +135,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             GameManager.DisasterType.Flood => 0f,
             GameManager.DisasterType.Landslide => 180f,
             GameManager.DisasterType.Wildfire => 180f,
+            GameManager.DisasterType.Storm => 0f,
             _ => 255f
         };
         player.Initialize(scenario, playerSpawn, playerYaw);
@@ -128,6 +146,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             scenario.ConfigureLandslide(landslideSafePosition);
         else if (worldDisasterType == GameManager.DisasterType.Wildfire)
             scenario.ConfigureWildfire(wildfireSafePosition);
+        else if (worldDisasterType == GameManager.DisasterType.Storm)
+            scenario.ConfigureStorm(stormShelterPosition);
         player.SetControlsEnabled(false);
 
         ui = new GameObject("Arayüz Yöneticisi").AddComponent<PrototypeUI>();
@@ -474,6 +494,650 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         BuildWildfireSmoke();
     }
 
+    private void BuildStormWorld()
+    {
+        stormTrees.Clear();
+        stormTreeBaseRotations.Clear();
+        stormClouds.Clear();
+        stormCloudBasePositions.Clear();
+        stormWaveCrests.Clear();
+        stormWaveBasePositions.Clear();
+        stormPostEventObjects.Clear();
+        stormRainSystems.Clear();
+        stormShelterPosition = new Vector3(0f, 0f, 3.5f);
+        stormPowerPolePivot = null;
+
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogColor = new Color32(111, 126, 137, 255);
+        RenderSettings.fogDensity = 0.0065f;
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+        RenderSettings.ambientSkyColor = new Color32(116, 136, 153, 255);
+        RenderSettings.ambientEquatorColor = new Color32(80, 93, 100, 255);
+        RenderSettings.ambientGroundColor = new Color32(37, 47, 49, 255);
+        RenderSettings.ambientIntensity = 0.78f;
+        Shader proceduralSky = Shader.Find("Skybox/Procedural");
+        if (proceduralSky != null)
+        {
+            Material overcast = new Material(proceduralSky) { name = "Fırtına Kapalı Gökyüzü" };
+            if (overcast.HasProperty("_SkyTint")) overcast.SetColor("_SkyTint", new Color(0.57f, 0.64f, 0.69f));
+            if (overcast.HasProperty("_GroundColor")) overcast.SetColor("_GroundColor", new Color(0.27f, 0.31f, 0.33f));
+            if (overcast.HasProperty("_AtmosphereThickness")) overcast.SetFloat("_AtmosphereThickness", 1.35f);
+            RenderSettings.skybox = overcast;
+        }
+        Light sun = GameObject.Find("Yumuşak Gün Işığı")?.GetComponent<Light>();
+        if (sun != null)
+        {
+            sun.color = new Color(0.63f, 0.72f, 0.79f);
+            sun.intensity = 0.48f;
+            sun.transform.rotation = Quaternion.Euler(28f, -122f, 0f);
+        }
+
+        Material meadow = MakeMaterial("Fırtına Kıyı Çayırı", new Color32(70, 83, 71, 255));
+        Material grass = MakeMaterial("Yağmurla Yatmış Otlar", new Color32(84, 99, 79, 255));
+        Material asphalt = MakeMaterial("Fırtına Islak Asfalt", new Color32(42, 54, 62, 255));
+        Material puddle = MakeMaterial("Yol Üstünde Yağmur Birikintileri", new Color32(52, 72, 79, 255));
+        Material concrete = MakeMaterial("Yağmur Islatmış Beton", new Color32(102, 112, 112, 255));
+        Material curb = MakeMaterial("Kaldırım Kenar Taşı", new Color32(135, 140, 133, 255));
+        Material plaster = MakeMaterial("Sahil Evi Islak Sıva", new Color32(181, 174, 151, 255));
+        Material plasterShade = MakeMaterial("Sahil Evi Koyu Sıva", new Color32(135, 137, 126, 255));
+        Material stone = MakeMaterial("Sahil Evi Taş Temel", new Color32(88, 99, 98, 255));
+        Material roof = MakeMaterial("Fırtına Evi Koyu Kiremit", new Color32(64, 77, 83, 255));
+        Material timber = MakeMaterial("Dış Mekân Ceviz Ahşabı", new Color32(91, 67, 51, 255));
+        Material blueTrim = MakeMaterial("Koyu Mavi Pencere Doğraması", new Color32(47, 72, 82, 255));
+        Material glass = MakeMaterial("Fırtına Pencere Camı", new Color32(76, 111, 125, 255));
+        Material shutter = MakeMaterial("Panjur Metal Kaplaması", new Color32(68, 91, 99, 255));
+        Material green = MakeMaterial("Sığınak İç Alanı", new Color32(53, 111, 92, 255));
+        Material yellow = MakeMaterial("Fırtına Yönlendirme İşareti", new Color32(230, 181, 80, 255));
+        Material darkMetal = MakeMaterial("Elektrik Direği ve Metal", new Color32(43, 52, 55, 255));
+        Material wire = MakeMaterial("Islak Elektrik Kablosu", new Color32(25, 34, 37, 255));
+        Material sea = MakeMaterial("Fırtınalı Marmara Denizi", new Color32(37, 69, 82, 255));
+        Material foam = MakeMaterial("Kıyı Köpüğü", new Color32(158, 177, 177, 255));
+        Material treeBark = MakeMaterial("Rüzgârda Islak Ağaç Kabuğu", new Color32(69, 58, 47, 255));
+        Material foliage = MakeMaterial("Yağmurlu Kıyı Ağacı Yaprakları", new Color32(54, 78, 66, 255));
+        Material foliageLight = MakeMaterial("Kıyı Ağacı Yaprak Işıkları", new Color32(79, 103, 83, 255));
+        Material emergency = MakeMaterial("Fırtına Acil Çağrı Turuncusu", new Color32(207, 74, 52, 255));
+        if (asphalt.HasProperty("_Smoothness")) asphalt.SetFloat("_Smoothness", 0.82f);
+        if (asphalt.HasProperty("_Metallic")) asphalt.SetFloat("_Metallic", 0.12f);
+        if (puddle.HasProperty("_Smoothness")) puddle.SetFloat("_Smoothness", 0.98f);
+        if (puddle.HasProperty("_Metallic")) puddle.SetFloat("_Metallic", 0.24f);
+        if (glass.HasProperty("_Smoothness")) glass.SetFloat("_Smoothness", 0.92f);
+        if (sea.HasProperty("_Smoothness")) sea.SetFloat("_Smoothness", 0.76f);
+
+        CreateBox("Fırtına Kıyı Mahallesi Zemini", new Vector3(0f, -0.42f, 1f), new Vector3(78f, 0.84f, 60f), meadow);
+        CreateBox("Sahil Caddesi Islak Asfalt", new Vector3(0f, 0.015f, -9f), new Vector3(68f, 0.08f, 7.4f), asphalt);
+        CreateBox("Sahil Caddesi Güney Kaldırımı", new Vector3(0f, 0.08f, -13.25f), new Vector3(68f, 0.22f, 1.0f), concrete);
+        CreateBox("Sahil Caddesi Kuzey Kaldırımı", new Vector3(0f, 0.08f, -4.75f), new Vector3(68f, 0.22f, 1.0f), concrete);
+        CreateBox("Kaldırım Bordürü Güney", new Vector3(0f, 0.11f, -12.7f), new Vector3(68f, 0.25f, 0.16f), curb);
+        CreateBox("Kaldırım Bordürü Kuzey", new Vector3(0f, 0.11f, -5.28f), new Vector3(68f, 0.25f, 0.16f), curb);
+        for (int i = 0; i < 15; i++)
+        {
+            float x = -31.5f + i * 4.5f;
+            CreateBox("Yıpranmış Yol Orta Çizgisi " + i, new Vector3(x, 0.066f, -9f),
+                new Vector3(2.5f, 0.018f, 0.12f), yellow);
+        }
+        for (int i = 0; i < 24; i++)
+        {
+            float x = -31f + i * 2.7f + Mathf.Sin(i * 2.1f) * 0.55f;
+            float z = -9f + Mathf.Sin(i * 1.73f) * 2.7f;
+            GameObject puddlePatch = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            puddlePatch.name = "Asfaltta Düzensiz Yağmur Birikintisi " + i;
+            puddlePatch.transform.position = new Vector3(x, 0.060f, z);
+            puddlePatch.transform.localScale = new Vector3(0.55f + (i % 4) * 0.22f, 0.012f, 0.22f + (i % 3) * 0.10f);
+            puddlePatch.GetComponent<Renderer>().sharedMaterial = puddle;
+            Collider puddleCollider = puddlePatch.GetComponent<Collider>();
+            if (puddleCollider != null) puddleCollider.enabled = false;
+        }
+        for (int i = 0; i < 18; i++)
+        {
+            float x = -31f + i * 3.7f;
+            CreateBox("Yağmur Suyu Drenaj Kanalı " + i, new Vector3(x, 0.195f, -5.42f),
+                new Vector3(0.9f, 0.025f, 0.08f), darkMetal);
+        }
+
+        GameObject ocean = CreateBox("Fırtınalı Kıyı Denizi", new Vector3(0f, -0.08f, 23f), new Vector3(82f, 0.16f, 17f), sea);
+        Collider seaCollider = ocean.GetComponent<Collider>();
+        if (seaCollider != null) seaCollider.enabled = false;
+        CreateBox("Dalgakıran Beton Kıyı", new Vector3(0f, 0.38f, 14.0f), new Vector3(82f, 0.8f, 1.2f), stone);
+        for (int i = 0; i < 22; i++)
+        {
+            float x = -38f + i * 3.6f;
+            GameObject crest = CreateBox("Köpüren Dalga Sırtı " + i,
+                new Vector3(x, 0.04f + (i % 3) * 0.018f, 16.2f + Mathf.Sin(i * 1.7f) * 0.75f),
+                new Vector3(2.2f + (i % 4) * 0.3f, 0.035f, 0.26f), foam);
+            Collider crestCollider = crest.GetComponent<Collider>();
+            if (crestCollider != null) crestCollider.enabled = false;
+            stormWaveCrests.Add(crest.transform);
+            stormWaveBasePositions.Add(crest.transform.position);
+        }
+        for (int i = 0; i < 20; i++)
+        {
+            float x = -36f + i * 3.8f;
+            GameObject cloud = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            cloud.name = "Alçak Fırtına Bulutu Kütlesi " + i;
+            cloud.transform.position = new Vector3(x, 22f + Mathf.Sin(i * 0.73f) * 2.3f, 4f + Mathf.Cos(i * 1.11f) * 13f);
+            cloud.transform.localScale = new Vector3(18f, 5.2f + (i % 3), 14f);
+            cloud.GetComponent<Renderer>().sharedMaterial = i % 4 == 0
+                ? MakeMaterial("Açık Kurşuni Bulut", new Color32(133, 146, 153, 255))
+                : MakeMaterial("Fırtına Kurşuni Bulut", new Color32(87, 103, 114, 255));
+            stormClouds.Add(cloud.transform);
+            stormCloudBasePositions.Add(cloud.transform.position);
+            Collider cloudCollider = cloud.GetComponent<Collider>();
+            if (cloudCollider != null) cloudCollider.enabled = false;
+        }
+
+        BuildStormHouse(plaster, plasterShade, stone, roof, timber, blueTrim, glass, shutter, green, yellow, emergency, darkMetal);
+        BuildStormNeighborhood(grass, plaster, roof, treeBark, foliage, foliageLight);
+        BuildStormUtilities(timber, darkMetal, wire, yellow);
+        BuildStormWeatherEffects();
+    }
+
+    private void BuildStormHouse(Material wall, Material shade, Material foundation, Material roof, Material timber,
+        Material trim, Material glass, Material shutter, Material safeFloor, Material accent, Material emergency, Material metal)
+    {
+        const float centerZ = 3f;
+        const float halfWidth = 5f;
+        const float frontZ = -2f;
+        const float backZ = 8f;
+        // Split the foundation around the entrance; a solid full-width foundation cube blocked the doorway.
+        CreateBox("Sağlam Kıyı Evi Taş Temeli Sol", new Vector3(-3.45f, 0.36f, centerZ), new Vector3(3.1f, 0.72f, 10.5f), foundation);
+        CreateBox("Sağlam Kıyı Evi Taş Temeli Sağ", new Vector3(3.45f, 0.36f, centerZ), new Vector3(3.1f, 0.72f, 10.5f), foundation);
+        CreateBox("Sağlam Kıyı Evi Arka Temel Bağı", new Vector3(0f, 0.36f, 8.0f), new Vector3(3.8f, 0.72f, 0.5f), foundation);
+        CreateBox("Evin İç Döşemesi", new Vector3(0f, 0.76f, centerZ), new Vector3(9.85f, 0.10f, 9.85f), MakeMaterial("Fırtına Evi İç Ahşap Döşeme", new Color32(135, 119, 91, 255)));
+        GameObject entryRamp = CreateBox("Kapıya Çıkan Kaymaz Erişim Rampası", new Vector3(0f, 0.37f, -3.55f),
+            new Vector3(3.72f, 0.16f, 3.65f), MakeMaterial("Islak Hava Kaymaz Rampa Betonu", new Color32(104, 111, 107, 255)));
+        entryRamp.transform.rotation = Quaternion.Euler(-11.8f, 0f, 0f);
+        CreateBox("Evin Arka Dış Duvarı", new Vector3(0f, 2.36f, backZ), new Vector3(10f, 3.2f, 0.32f), wall);
+        CreateBox("Evin Sol Yan Duvarı", new Vector3(-halfWidth, 2.36f, centerZ), new Vector3(0.32f, 3.2f, 10f), shade);
+        CreateBox("Evin Sağ Yan Duvarı", new Vector3(halfWidth, 2.36f, centerZ), new Vector3(0.32f, 3.2f, 10f), wall);
+        // Split the side facade around real window openings so the glazing is not a flat prop on a wall.
+        float windowBottom = 1.83f;
+        float windowTop = 3.13f;
+        float windowCenterY = (windowBottom + windowTop) * 0.5f;
+        float windowHeight = windowTop - windowBottom;
+        for (int side = -1; side <= 1; side += 2)
+        {
+            float windowX = side * 2.95f;
+            float outerStripWidth = 1.125f;
+            float innerStripWidth = 0.125f;
+            float outerCenterX = side * 4.4375f;
+            float innerCenterX = side * 1.9625f;
+            CreateBox("Ön Cephe Pencere Dış Yan Duvar " + side,
+                new Vector3(outerCenterX, 2.36f, frontZ), new Vector3(outerStripWidth, 3.2f, 0.32f), wall);
+            CreateBox("Ön Cephe Pencere Kapı Yanı Duvar " + side,
+                new Vector3(innerCenterX, 2.36f, frontZ), new Vector3(innerStripWidth, 3.2f, 0.32f), wall);
+            CreateBox("Ön Cephe Pencere Alt Duvarı " + side,
+                new Vector3(windowX, (0.76f + windowBottom) * 0.5f, frontZ),
+                new Vector3(1.85f, windowBottom - 0.76f, 0.32f), wall);
+            CreateBox("Ön Cephe Pencere Üst Duvarı " + side,
+                new Vector3(windowX, (windowTop + 3.96f) * 0.5f, frontZ),
+                new Vector3(1.85f, 3.96f - windowTop, 0.32f), wall);
+        }
+        CreateBox("Ön Kapı Yan Duvarı Sol", new Vector3(-1.45f, 2.36f, frontZ), new Vector3(0.9f, 3.2f, 0.32f), wall);
+        CreateBox("Ön Kapı Yan Duvarı Sağ", new Vector3(1.45f, 2.36f, frontZ), new Vector3(0.9f, 3.2f, 0.32f), wall);
+        CreateBox("Ön Kapı Üstü Hatıl", new Vector3(0f, 3.84f, frontZ), new Vector3(2.0f, 0.24f, 0.32f), wall);
+        // Keep the threshold open: the plinth continues on both sides of the doorway only.
+        CreateBox("Dış Cephe Su Basman Bandı Sol", new Vector3(-3.0f, 1.0f, frontZ - 0.19f), new Vector3(4.0f, 0.38f, 0.10f), foundation);
+        CreateBox("Dış Cephe Su Basman Bandı Sağ", new Vector3(3.0f, 1.0f, frontZ - 0.19f), new Vector3(4.0f, 0.38f, 0.10f), foundation);
+        CreateBox("Arka Dış Cephe Su Basman Bandı", new Vector3(0f, 1.0f, backZ + 0.19f), new Vector3(9.95f, 0.38f, 0.10f), foundation);
+        CreateBox("Sol Dış Cephe Su Basman Bandı", new Vector3(-halfWidth - 0.19f, 1.0f, centerZ), new Vector3(0.10f, 0.38f, 9.9f), foundation);
+        CreateBox("Sağ Dış Cephe Su Basman Bandı", new Vector3(halfWidth + 0.19f, 1.0f, centerZ), new Vector3(0.10f, 0.38f, 9.9f), foundation);
+
+        GameObject leftRoof = CreateBox("Evin Kırma Çatı Sol Eğimi", new Vector3(-2.55f, 4.68f, centerZ), new Vector3(5.75f, 0.30f, 10.65f), roof);
+        leftRoof.transform.rotation = Quaternion.Euler(0f, 0f, 16f);
+        GameObject rightRoof = CreateBox("Evin Kırma Çatı Sağ Eğimi", new Vector3(2.55f, 4.68f, centerZ), new Vector3(5.75f, 0.30f, 10.65f), roof);
+        rightRoof.transform.rotation = Quaternion.Euler(0f, 0f, -16f);
+        CreateBox("Çatı Mahya Kapağı", new Vector3(0f, 5.40f, centerZ), new Vector3(0.42f, 0.22f, 10.9f), trim);
+        CreateStormGable("Ön Çatı Üçgen Kapatması", frontZ, wall);
+        CreateStormGable("Arka Çatı Üçgen Kapatması", backZ, wall);
+        CreateBox("Ön Saçak Oluk", new Vector3(0f, 3.96f, -2.52f), new Vector3(10.2f, 0.14f, 0.16f), metal);
+        CreateBox("Arka Saçak Oluk", new Vector3(0f, 3.96f, 8.52f), new Vector3(10.2f, 0.14f, 0.16f), metal);
+        CreateBox("Yağmur İniş Borusu", new Vector3(4.79f, 2.0f, -1.72f), new Vector3(0.12f, 3.6f, 0.12f), metal);
+
+        // The passage is about 1.88 m wide and 2.9 m high; the hinged door starts open.
+        CreateBox("Giriş Kapısı Kasa Sol", new Vector3(-1.0f, 2.27f, frontZ - 0.20f), new Vector3(0.12f, 3.0f, 0.16f), trim);
+        CreateBox("Giriş Kapısı Kasa Sağ", new Vector3(1.0f, 2.27f, frontZ - 0.20f), new Vector3(0.12f, 3.0f, 0.16f), trim);
+        CreateBox("Giriş Kapısı Üst Kasa", new Vector3(0f, 3.77f, frontZ - 0.20f), new Vector3(2.08f, 0.16f, 0.16f), trim);
+        GameObject stormDoorPivot = new GameObject("Açılıp Kapanan Fırtına Giriş Kapısı Menteşesi");
+        stormDoorPivot.transform.position = new Vector3(-0.91f, 0.78f, frontZ - 0.20f);
+        GameObject stormDoorLeaf = CreateBox("Sağlam Ev Ahşap Giriş Kapısı", stormDoorPivot.transform.position + new Vector3(0.91f, 1.43f, 0f),
+            new Vector3(1.82f, 2.86f, 0.12f), timber);
+        stormDoorLeaf.transform.SetParent(stormDoorPivot.transform, true);
+        CreateChildBox(stormDoorPivot.transform, "Fırtına Kapısı Etkileşim Kolu", new Vector3(1.67f, 1.52f, -0.08f),
+            new Vector3(0.10f, 0.20f, 0.10f), accent);
+        GameObject doorControl = new GameObject("Fırtına Kapısı Etkileşim Alanı");
+        stormDoorPivot.transform.SetParent(doorControl.transform, true);
+        BoxCollider doorTargetArea = doorControl.AddComponent<BoxCollider>();
+        doorTargetArea.isTrigger = true;
+        doorTargetArea.center = new Vector3(0f, 2.18f, frontZ - 0.20f);
+        doorTargetArea.size = new Vector3(1.88f, 2.8f, 0.42f);
+        PrototypeInteractable stormDoorInteraction = doorControl.AddComponent<PrototypeInteractable>();
+        stormDoorInteraction.Configure(PrototypeAction.ToggleStormDoor, "E ile kapıyı kapat");
+        stormDoorInteraction.ConfigureStormDoor(stormDoorPivot.transform, stormDoorLeaf.GetComponent<Collider>(), true);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            float x = side * 2.95f;
+            CreateBox("Ön Pencere Dış Çerçevesi " + side, new Vector3(x, 2.48f, frontZ - 0.19f), new Vector3(1.85f, 1.30f, 0.10f), trim);
+            CreateBox("Ön Pencere Camı " + side, new Vector3(x, 2.48f, frontZ - 0.25f), new Vector3(1.56f, 1.03f, 0.045f), glass);
+            CreateBox("Pencere Dikey Bölmesi " + side, new Vector3(x, 2.48f, frontZ - 0.29f), new Vector3(0.055f, 1.02f, 0.05f), metal);
+            CreateBox("Pencere Yatay Bölmesi " + side, new Vector3(x, 2.48f, frontZ - 0.29f), new Vector3(1.54f, 0.055f, 0.05f), metal);
+            CreateBox("Pencere Altlığı " + side, new Vector3(x, 1.77f, frontZ - 0.28f), new Vector3(2.03f, 0.12f, 0.35f), timber);
+        }
+
+        // A wind shutter is visibly hinged open before the player closes it.
+        GameObject openShutter = new GameObject("Fırtına Öncesi Açık Metal Panjur");
+        openShutter.transform.position = new Vector3(-4.05f, 2.48f, frontZ - 0.36f);
+        CreateChildBox(openShutter.transform, "Panjur Metal Paneli", Vector3.zero,
+            new Vector3(0.82f, 1.15f, 0.12f), shutter);
+        for (int slat = 0; slat < 5; slat++)
+            CreateChildBox(openShutter.transform, "Panjur Yatay Lata " + slat,
+                new Vector3(0f, -0.44f + slat * 0.22f, -0.075f), new Vector3(0.80f, 0.035f, 0.035f), metal);
+        GameObject shutterCrank = CreateBox("Panjur El Kolu", new Vector3(-1.75f, 1.15f, frontZ - 0.42f), new Vector3(0.18f, 0.38f, 0.16f), metal);
+        PrototypeInteractable shutterTask = shutterCrank.AddComponent<PrototypeInteractable>();
+        shutterTask.Configure(PrototypeAction.CloseStormShutters, "Metal panjuru kapat");
+        shutterTask.ConfigureMove(openShutter.transform, new Vector3(-2.95f, 2.48f, frontZ - 0.36f));
+
+        GameObject outdoorFurniture = new GameObject("Sabitleme Bekleyen Balkon Sandalye ve Masa Takımı");
+        outdoorFurniture.transform.position = new Vector3(-1.9f, 0f, -4.2f);
+        CreateChildBox(outdoorFurniture.transform, "Hafif Balkon Masası", new Vector3(0f, 0.72f, 0f), new Vector3(1.35f, 0.14f, 0.85f), timber);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            CreateChildBox(outdoorFurniture.transform, "Balkon Masası Ayağı " + side, new Vector3(side * 0.48f, 0.36f, 0f), new Vector3(0.09f, 0.72f, 0.09f), metal);
+            CreateChildBox(outdoorFurniture.transform, "Hafif Balkon Sandalyesi " + side, new Vector3(side * 1.0f, 0.35f, 0.14f), new Vector3(0.58f, 0.70f, 0.62f), MakeMaterial("Balkon Sandalyesi", new Color32(104, 116, 113, 255)));
+            CreateChildBox(outdoorFurniture.transform, "Sandalye Sırtlığı " + side, new Vector3(side * 1.0f, 0.76f, 0.40f), new Vector3(0.58f, 0.66f, 0.10f), timber);
+        }
+        PrototypeInteractable furnitureTask = outdoorFurniture.AddComponent<PrototypeInteractable>();
+        furnitureTask.Configure(PrototypeAction.SecureStormLooseItems, "Hafif balkon mobilyasını duvar dibindeki sabitleme yerine al");
+        furnitureTask.ConfigureMove(outdoorFurniture.transform, new Vector3(-3.65f, 0f, -3.45f));
+        scenario.AddStormPreparationTask(furnitureTask);
+        scenario.AddStormPreparationTask(shutterTask);
+        CreateBox("Balkon Mobilyası Sabitleme Halkası", new Vector3(-3.65f, 0.07f, -3.45f), new Vector3(1.6f, 0.04f, 0.12f), accent);
+
+        // A broad, visible inner-house refuge gives the player a fair margin from windows.
+        GameObject refugeRug = CreateBox("Pencerelerden Uzak İç Oda Güvenli Alanı", stormShelterPosition + new Vector3(0f, 0.035f, 0f),
+            new Vector3(7.5f, 0.05f, 7.5f), safeFloor);
+        Collider refugeCollider = refugeRug.GetComponent<Collider>();
+        if (refugeCollider != null) refugeCollider.enabled = false;
+        CreateBox("İç Oda Alanı İnce Kenar Şeridi", stormShelterPosition + new Vector3(0f, 0.068f, -3.68f), new Vector3(7.55f, 0.025f, 0.045f), accent);
+        CreateBox("İç Oda Alanı Kenar Şeridi Sol", stormShelterPosition + new Vector3(-3.68f, 0.068f, 0f), new Vector3(0.045f, 0.025f, 7.55f), accent);
+
+        Material lamp = MakeMaterial("Sığınak Tavan Armatürü", new Color32(214, 220, 205, 255));
+        GameObject lampObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        lampObject.name = "Sığınağın İç Oda Armatürü";
+        lampObject.transform.position = new Vector3(0f, 2.95f, 5.2f);
+        lampObject.transform.localScale = new Vector3(0.36f, 0.16f, 0.36f);
+        lampObject.GetComponent<Renderer>().sharedMaterial = lamp;
+        Collider lampCollider = lampObject.GetComponent<Collider>();
+        if (lampCollider != null) lampCollider.enabled = false;
+        Light refugeLight = lampObject.AddComponent<Light>();
+        refugeLight.type = LightType.Point;
+        refugeLight.color = new Color(1f, 0.83f, 0.59f);
+        refugeLight.intensity = 2.0f;
+        refugeLight.range = 9f;
+
+        // An in-world emergency phone lets the player report a downed line after the storm.
+        Vector3 phonePosition = new Vector3(-1.55f, 1.18f, 5.35f);
+        CreateBox("Fırtına Acil Telefon Sehpası Ayağı", phonePosition + new Vector3(0f, -0.60f, 0.14f), new Vector3(0.16f, 1.08f, 0.16f), timber);
+        CreateBox("Fırtına Acil Telefon Sehpası Tabanı", phonePosition + new Vector3(0f, -1.14f, 0.14f), new Vector3(0.64f, 0.12f, 0.44f), timber);
+        CreateBox("Fırtına Acil Telefon Duvar Montajı", phonePosition + new Vector3(-0.32f, 0f, 0.14f), new Vector3(0.78f, 0.96f, 0.24f), metal);
+        GameObject phone = CreateBox("Fırtına Sonrası 112 Acil Telefonu", phonePosition, new Vector3(0.52f, 0.68f, 0.22f), MakeMaterial("Fırtına Telefonu Gövdesi", new Color32(42, 58, 61, 255)));
+        CreateBox("Telefon Ekranı", phonePosition + new Vector3(0f, 0.18f, -0.13f), new Vector3(0.32f, 0.12f, 0.025f), MakeMaterial("Telefon Yeşil Ekran", new Color32(91, 184, 151, 255)));
+        CreateBox("Telefon Acil Çağrı Tuşu", phonePosition + new Vector3(0f, -0.12f, -0.14f), new Vector3(0.17f, 0.13f, 0.035f), emergency);
+        GameObject handsetPivot = new GameObject("Fırtına Telefonu Ahize Menteşesi");
+        handsetPivot.transform.position = phonePosition + new Vector3(0f, 0.52f, -0.16f);
+        GameObject handset = CreateBox("Fırtına Telefonu Ahizesi", handsetPivot.transform.position, new Vector3(0.46f, 0.09f, 0.10f), metal);
+        handset.transform.SetParent(handsetPivot.transform, false);
+        handset.transform.localPosition = Vector3.zero;
+        handset.transform.localScale = new Vector3(0.46f, 0.09f, 0.10f);
+        PrototypeInteractable call = phone.AddComponent<PrototypeInteractable>();
+        call.Configure(PrototypeAction.CallForStormHelp, "112'yi ara; kopmuş hattı ve konumu bildir");
+        call.ConfigureFloodPhoneVisual(handsetPivot.transform);
+        foreach (Collider visual in new[] { handset.GetComponent<Collider>() })
+            if (visual != null) visual.enabled = false;
+        scenario.SetStormAfterTask(call);
+
+        // Interior furniture makes the refuge read as a lived-in sturdy room, but stays clear of the route.
+        CreateBox("İç Oda Masası", new Vector3(1.85f, 0.80f, 6.8f), new Vector3(2.0f, 0.12f, 0.9f), timber);
+        for (int side = -1; side <= 1; side += 2)
+            for (int depth = -1; depth <= 1; depth += 2)
+                CreateBox("İç Oda Masası Ayağı " + side + " " + depth,
+                    new Vector3(1.85f + side * 0.82f, 0.42f, 6.8f + depth * 0.33f), new Vector3(0.12f, 0.72f, 0.12f), timber);
+        CreateBox("İç Oda Duvar Rafı", new Vector3(2.7f, 2.25f, 7.62f), new Vector3(2.1f, 0.12f, 0.42f), timber);
+        CreateBox("İç Oda Battaniye ve Su Kutusu", new Vector3(2.65f, 0.48f, 6.72f), new Vector3(0.54f, 0.46f, 0.48f), MakeMaterial("Acil Durum Malzemesi", new Color32(148, 85, 48, 255)));
+    }
+
+    private void CreateStormGable(string objectName, float z, Material material)
+    {
+        const float halfWidth = 5f;
+        const float eaveY = 3.96f;
+        const float ridgeY = 5.34f;
+        const float halfDepth = 0.16f;
+        Mesh mesh = new Mesh { name = objectName + " Mesh" };
+        mesh.vertices = new[]
+        {
+            new Vector3(-halfWidth, eaveY, -halfDepth), new Vector3(0f, ridgeY, -halfDepth), new Vector3(halfWidth, eaveY, -halfDepth),
+            new Vector3(-halfWidth, eaveY, halfDepth), new Vector3(0f, ridgeY, halfDepth), new Vector3(halfWidth, eaveY, halfDepth)
+        };
+        mesh.triangles = new[]
+        {
+            0, 1, 2, 3, 5, 4,
+            0, 3, 4, 0, 4, 1,
+            1, 4, 5, 1, 5, 2,
+            0, 5, 3, 0, 2, 5
+        };
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        GameObject gable = new GameObject(objectName);
+        gable.transform.position = new Vector3(0f, 0f, z);
+        gable.AddComponent<MeshFilter>().sharedMesh = mesh;
+        gable.AddComponent<MeshRenderer>().sharedMaterial = material;
+        gable.AddComponent<MeshCollider>().sharedMesh = mesh;
+    }
+
+    private void BuildStormNeighborhood(Material grass, Material wall, Material roof, Material bark, Material leaves, Material leavesLight)
+    {
+        for (int i = 0; i < 26; i++)
+        {
+            int row = i / 13;
+            int column = i % 13;
+            float x = -29f + column * 4.8f + Mathf.Sin(i * 1.71f) * 0.7f;
+            float z = row == 0 ? -22f + Mathf.Sin(i * 0.83f) * 2f : 11.5f + Mathf.Cos(i * 1.3f) * 2.5f;
+            if (Mathf.Abs(x) < 8.5f && z > -16f && z < 9f)
+                continue;
+            if (row == 1 && z > 9f && i % 4 == 0)
+                continue;
+            BuildStormTree(new Vector3(x, 0f, z), i, bark, i % 3 == 0 ? leavesLight : leaves);
+        }
+
+        // Quiet coastal homes and stone walls establish a real street around the playable shelter.
+        for (int i = 0; i < 7; i++)
+        {
+            float x = -28f + i * 9.2f;
+            if (Mathf.Abs(x) < 9f) continue;
+            float z = -0.5f + Mathf.Sin(i * 1.7f) * 1.5f;
+            CreateBox("Sahil Sokağı Ev Temeli " + i, new Vector3(x, 0.22f, z), new Vector3(7.1f, 0.44f, 6.6f), MakeMaterial("Komşu Ev Taş Temeli", new Color32(92, 100, 98, 255)));
+            CreateBox("Komşu Ev Gövdesi " + i, new Vector3(x, 1.9f, z), new Vector3(6.8f, 3.0f, 6.3f), i % 2 == 0 ? wall : MakeMaterial("Komşu Ev Soluk Adaçayı Sıvası", new Color32(151, 164, 151, 255)));
+            GameObject roofPanel = CreateBox("Komşu Ev Çatı Paneli " + i, new Vector3(x, 3.75f, z), new Vector3(7.8f, 0.42f, 7.0f), roof);
+            roofPanel.transform.rotation = Quaternion.Euler(0f, i % 2 == 0 ? 0f : 4f, i % 2 == 0 ? -8f : 8f);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                GameObject window = CreateBox("Komşu Ev Penceresi " + i + " " + side,
+                    new Vector3(x + side * 1.85f, 2.05f, z - 3.18f), new Vector3(1.08f, 1.1f, 0.045f), MakeMaterial("Uzak Ev Pencere Camı", new Color32(73, 105, 115, 255)));
+                Collider windowCollider = window.GetComponent<Collider>();
+                if (windowCollider != null) windowCollider.enabled = false;
+            }
+        }
+
+        for (int i = 0; i < 36; i++)
+        {
+            float x = -35f + i * 2.0f;
+            GameObject shrub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            shrub.name = "Rüzgârda Yere Yakın Kıyı Çalısı " + i;
+            shrub.transform.position = new Vector3(x, 0.28f + (i % 3) * 0.08f, -15.5f + Mathf.Sin(i * 1.41f) * 1.5f);
+            shrub.transform.localScale = new Vector3(1.2f + (i % 4) * 0.16f, 0.45f, 0.72f);
+            shrub.GetComponent<Renderer>().sharedMaterial = i % 2 == 0 ? grass : leaves;
+            Collider c = shrub.GetComponent<Collider>();
+            if (c != null) c.enabled = false;
+        }
+    }
+
+    private void BuildStormTree(Vector3 position, int index, Material bark, Material foliage)
+    {
+        GameObject tree = new GameObject("Fırtınada Eğilen Kıyı Ağacı " + index);
+        tree.transform.position = position;
+        float lean = Mathf.Sin(index * 1.87f) * 5f;
+        tree.transform.rotation = Quaternion.Euler(lean * 0.55f, index * 37f, lean);
+        stormTrees.Add(tree.transform);
+        stormTreeBaseRotations.Add(tree.transform.rotation);
+
+        GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        trunk.name = "Islak Ağaç Gövdesi";
+        trunk.transform.SetParent(tree.transform, false);
+        float height = 5.2f + (index % 4) * 0.6f;
+        trunk.transform.localPosition = new Vector3(0f, height * 0.46f, 0f);
+        trunk.transform.localScale = new Vector3(0.30f, height * 0.48f, 0.30f);
+        trunk.GetComponent<Renderer>().sharedMaterial = bark;
+        Collider trunkCollider = trunk.GetComponent<Collider>();
+        if (trunkCollider != null) trunkCollider.enabled = false;
+        for (int cluster = 0; cluster < 5; cluster++)
+        {
+            GameObject crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            crown.name = "Rüzgârla Sıkışan Yaprak Kümesi";
+            crown.transform.SetParent(tree.transform, false);
+            crown.transform.localPosition = new Vector3(Mathf.Sin(cluster * 4.3f + index) * 0.62f,
+                height * 0.72f + Mathf.Cos(cluster * 2.7f) * 0.45f, Mathf.Cos(cluster * 3.7f + index) * 0.62f);
+            crown.transform.localScale = new Vector3(1.65f, 1.28f, 1.5f);
+            crown.GetComponent<Renderer>().sharedMaterial = foliage;
+            Collider crownCollider = crown.GetComponent<Collider>();
+            if (crownCollider != null) crownCollider.enabled = false;
+        }
+        for (int branch = 0; branch < 3; branch++)
+        {
+            GameObject limb = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            limb.name = "Ağacın Kısa Yan Dalı";
+            limb.transform.SetParent(tree.transform, false);
+            limb.transform.localPosition = new Vector3((branch - 1) * 0.33f, height * (0.55f + branch * 0.055f), Mathf.Sin(branch * 3f) * 0.16f);
+            limb.transform.localRotation = Quaternion.Euler(0f, 0f, (branch - 1) * 25f + 48f);
+            limb.transform.localScale = new Vector3(0.12f, 1.05f, 0.12f);
+            limb.GetComponent<Renderer>().sharedMaterial = bark;
+            Collider branchCollider = limb.GetComponent<Collider>();
+            if (branchCollider != null) branchCollider.enabled = false;
+        }
+    }
+
+    private void BuildStormUtilities(Material timber, Material metal, Material wire, Material caution)
+    {
+        float[] streetLightPositions = { -27f, -13.5f, 13.5f, 27f };
+        for (int i = 0; i < streetLightPositions.Length; i++)
+        {
+            float x = streetLightPositions[i];
+            GameObject lampPole = CreateBox("Kıyı Caddesi Sokak Lambası Direği " + i,
+                new Vector3(x, 3.3f, -5.0f), new Vector3(0.16f, 6.6f, 0.16f), metal);
+            CreateBox("Kıyı Caddesi Sokak Lambası Kol " + i,
+                new Vector3(x + 0.58f, 6.28f, -5.0f), new Vector3(1.2f, 0.12f, 0.12f), metal);
+            CreateBox("Sokak Lambası Koruyucu Başlık " + i,
+                new Vector3(x + 1.05f, 6.1f, -5.0f), new Vector3(0.55f, 0.18f, 0.32f), caution);
+            Collider poleCollider = lampPole.GetComponent<Collider>();
+            if (poleCollider != null) poleCollider.enabled = false;
+        }
+
+        CreateBox("Elektrik Direği Ahşap Ana Gövde", new Vector3(16f, 4.7f, -5.1f), new Vector3(0.28f, 9.4f, 0.28f), timber);
+        CreateBox("Direk Üst Travers", new Vector3(16f, 9.15f, -5.1f), new Vector3(3.2f, 0.20f, 0.22f), timber);
+        CreateBox("Elektrik İzolatörü Sol", new Vector3(14.9f, 9.35f, -5.1f), new Vector3(0.18f, 0.56f, 0.18f), metal);
+        CreateBox("Elektrik İzolatörü Orta", new Vector3(16f, 9.35f, -5.1f), new Vector3(0.18f, 0.56f, 0.18f), metal);
+        CreateBox("Elektrik İzolatörü Sağ", new Vector3(17.1f, 9.35f, -5.1f), new Vector3(0.18f, 0.56f, 0.18f), metal);
+        CreateBox("Yüksek Gerilim Hattı Sol", new Vector3(3f, 8.9f, -5.1f), new Vector3(23f, 0.055f, 0.055f), wire);
+        CreateBox("Yüksek Gerilim Hattı Sağ", new Vector3(24f, 8.9f, -5.1f), new Vector3(16f, 0.055f, 0.055f), wire);
+        stormPowerPolePivot = new GameObject("Fırtınada Eğilmiş Elektrik Direği Pivotu").transform;
+        stormPowerPolePivot.position = new Vector3(25.5f, 0f, -4.9f);
+        GameObject fallenPole = CreateBox("Rüzgârda Eğilen Uzak Elektrik Direği", stormPowerPolePivot.position + new Vector3(0f, 4.2f, 0f),
+            new Vector3(0.24f, 8.4f, 0.24f), timber);
+        fallenPole.transform.SetParent(stormPowerPolePivot, true);
+        GameObject crossbar = CreateBox("Uzak Direk Travers", stormPowerPolePivot.position + new Vector3(0f, 8.4f, 0f),
+            new Vector3(2.7f, 0.18f, 0.2f), timber);
+        crossbar.transform.SetParent(stormPowerPolePivot, true);
+        for (int i = 0; i < 3; i++)
+        {
+            GameObject line = CreateBox("Elektrik Hattı Kabloları " + i,
+                new Vector3(20.8f, 8.7f + i * 0.12f, -4.9f + (i - 1) * 0.35f), new Vector3(12f, 0.045f, 0.045f), wire);
+            line.transform.rotation = Quaternion.Euler(0f, i * 2f, 0f);
+        }
+        GameObject hazard = CreateBox("Yerde Kopmuş Elektrik Hattı Tehlikesi", new Vector3(25f, 0.08f, -3.1f),
+            new Vector3(8.5f, 0.05f, 0.05f), wire);
+        hazard.transform.rotation = Quaternion.Euler(0f, 19f, 0f);
+        stormPostEventObjects.Add(hazard);
+        hazard.SetActive(false);
+        for (int i = 0; i < 4; i++)
+        {
+            GameObject marker = CreateBox("Kopmuş Hat Çevresi Uyarı Kazığı " + i,
+                new Vector3(22.2f + (i % 2) * 5.2f, 0.48f, -4.2f + (i / 2) * 2.3f), new Vector3(0.14f, 0.9f, 0.14f), caution);
+            marker.transform.rotation = Quaternion.Euler(0f, i * 29f, 10f * (i % 2 == 0 ? 1 : -1));
+            stormPostEventObjects.Add(marker);
+            marker.SetActive(false);
+        }
+    }
+
+    private void BuildStormWeatherEffects()
+    {
+        // Rain is emitted around the house, not above its interior. Wind pushes each band
+        // away from the walls so drops cannot drift through the open entrance.
+        Material rainMaterial = CreateStormParticleMaterial("Fırtına Yağmur Damlası Materyali", new Color(0.75f, 0.86f, 0.93f, 0.68f));
+        CreateStormRainEmitter("Ön Sokak Yağmuru", new Vector3(0f, 0f, -12.5f), new Vector3(22f, 0.12f, 15f), 215f, 5f, -3.5f, rainMaterial);
+        CreateStormRainEmitter("Sol Kıyı Yağmuru", new Vector3(-21f, 0f, 1f), new Vector3(20f, 0.12f, 43f), 560f, -2.8f, 0.8f, rainMaterial);
+        CreateStormRainEmitter("Sağ Kıyı Yağmuru", new Vector3(21f, 0f, 1f), new Vector3(20f, 0.12f, 43f), 560f, 7.5f, 0.8f, rainMaterial);
+        CreateStormRainEmitter("Arka Kıyı Yağmuru", new Vector3(0f, 0f, 16f), new Vector3(22f, 0.12f, 12f), 170f, 0f, 3.5f, rainMaterial);
+
+        GameObject debrisObject = new GameObject("Rüzgârda Sürüklenen Yaprak ve Küçük Dallar");
+        stormWindDebris = debrisObject.AddComponent<ParticleSystem>();
+        stormWindDebris.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        ParticleSystem.MainModule debrisMain = stormWindDebris.main;
+        debrisMain.playOnAwake = false;
+        debrisMain.loop = true;
+        debrisMain.duration = 7f;
+        debrisMain.startLifetime = new ParticleSystem.MinMaxCurve(1.4f, 3.2f);
+        debrisMain.startSpeed = new ParticleSystem.MinMaxCurve(2f, 4f);
+        debrisMain.startSize = new ParticleSystem.MinMaxCurve(0.05f, 0.16f);
+        debrisMain.startColor = new ParticleSystem.MinMaxGradient(new Color32(117, 103, 71, 235), new Color32(66, 86, 68, 240));
+        debrisMain.maxParticles = 380;
+        debrisMain.simulationSpace = ParticleSystemSimulationSpace.World;
+        debrisMain.gravityModifier = 0.06f;
+        debrisMain.startRotation3D = true;
+        debrisMain.startRotationX = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        debrisMain.startRotationY = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        debrisMain.startRotationZ = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        ParticleSystem.EmissionModule debrisEmission = stormWindDebris.emission;
+        debrisEmission.rateOverTime = 48f;
+        ParticleSystem.ShapeModule debrisShape = stormWindDebris.shape;
+        debrisShape.shapeType = ParticleSystemShapeType.Box;
+        debrisShape.scale = new Vector3(58f, 0.12f, 35f);
+        debrisShape.position = new Vector3(0f, 2.2f, 0f);
+        ParticleSystem.VelocityOverLifetimeModule debrisVelocity = stormWindDebris.velocityOverLifetime;
+        debrisVelocity.enabled = true;
+        debrisVelocity.x = new ParticleSystem.MinMaxCurve(8f);
+        debrisVelocity.y = new ParticleSystem.MinMaxCurve(1.4f);
+        debrisVelocity.z = new ParticleSystem.MinMaxCurve(1.1f);
+        ParticleSystem.RotationOverLifetimeModule debrisRotation = stormWindDebris.rotationOverLifetime;
+        debrisRotation.enabled = true;
+        debrisRotation.z = new ParticleSystem.MinMaxCurve(2.2f, 5.5f);
+        ParticleSystemRenderer debrisRenderer = stormWindDebris.GetComponent<ParticleSystemRenderer>();
+        debrisRenderer.renderMode = ParticleSystemRenderMode.Mesh;
+        debrisRenderer.mesh = CreateStormLeafMesh();
+        debrisRenderer.material = CreateStormParticleMaterial("Yağmurda Sürüklenen Yaprak Materyali", new Color(0.68f, 0.57f, 0.35f, 0.95f));
+        debrisRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        debrisRenderer.receiveShadows = false;
+        stormWindDebris.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+        GameObject lightningObject = new GameObject("Uzak Şimşek Işığı");
+        lightningObject.transform.position = new Vector3(2f, 15f, 11f);
+        stormLightning = lightningObject.AddComponent<Light>();
+        stormLightning.type = LightType.Directional;
+        stormLightning.color = new Color(0.72f, 0.82f, 1f);
+        stormLightning.intensity = 0f;
+        stormLightning.shadows = LightShadows.None;
+    }
+
+    private ParticleSystem CreateStormRainEmitter(string objectName, Vector3 center, Vector3 bounds,
+        float emissionRate, float windX, float windZ, Material material)
+    {
+        GameObject rainObject = new GameObject(objectName);
+        rainObject.transform.position = center;
+        ParticleSystem rain = rainObject.AddComponent<ParticleSystem>();
+        rain.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        ParticleSystem.MainModule main = rain.main;
+        main.playOnAwake = false;
+        main.loop = true;
+        main.duration = 5f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(1.1f, 1.7f);
+        main.startSpeed = 0f;
+        main.startSize = new ParticleSystem.MinMaxCurve(0.045f, 0.075f);
+        main.startColor = new Color(0.76f, 0.86f, 0.92f, 0.6f);
+        main.maxParticles = Mathf.Max(600, Mathf.CeilToInt(emissionRate * 1.8f));
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.gravityModifier = 0f;
+        ParticleSystem.EmissionModule emission = rain.emission;
+        emission.rateOverTime = emissionRate;
+        ParticleSystem.ShapeModule shape = rain.shape;
+        shape.shapeType = ParticleSystemShapeType.Box;
+        shape.scale = bounds;
+        shape.position = new Vector3(0f, 18f, 0f);
+        ParticleSystem.VelocityOverLifetimeModule velocity = rain.velocityOverLifetime;
+        velocity.enabled = true;
+        velocity.x = new ParticleSystem.MinMaxCurve(windX);
+        velocity.y = new ParticleSystem.MinMaxCurve(-20f);
+        velocity.z = new ParticleSystem.MinMaxCurve(windZ);
+        ParticleSystem.CollisionModule rainCollision = rain.collision;
+        rainCollision.enabled = true;
+        rainCollision.type = ParticleSystemCollisionType.World;
+        rainCollision.quality = ParticleSystemCollisionQuality.Low;
+        rainCollision.lifetimeLoss = 1f;
+        rainCollision.sendCollisionMessages = false;
+        ParticleSystemRenderer renderer = rain.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = ParticleSystemRenderMode.Stretch;
+        renderer.lengthScale = 5.8f;
+        renderer.velocityScale = 0.12f;
+        renderer.material = material;
+        rain.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        stormRainSystems.Add(rain);
+        return rain;
+    }
+
+    private Material CreateStormParticleMaterial(string name, Color tint)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
+        if (shader == null) shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended");
+        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null) shader = Shader.Find("Standard");
+        if (shader == null) return MakeMaterial(name, tint);
+        Material material = new Material(shader) { name = name, color = tint };
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", tint);
+        if (material.HasProperty("_Color")) material.SetColor("_Color", tint);
+        material.SetOverrideTag("RenderType", "Transparent");
+        if (material.HasProperty("_Surface")) material.SetFloat("_Surface", 1f);
+        if (material.HasProperty("_Blend")) material.SetFloat("_Blend", 0f);
+        if (material.HasProperty("_SrcBlend")) material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        if (material.HasProperty("_DstBlend")) material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        if (material.HasProperty("_ZWrite")) material.SetInt("_ZWrite", 0);
+        material.DisableKeyword("_ALPHATEST_ON");
+        material.EnableKeyword("_ALPHABLEND_ON");
+        material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.renderQueue = 3000;
+        return material;
+    }
+
+    private Mesh CreateStormLeafMesh()
+    {
+        Mesh leaf = new Mesh { name = "Sivrilen Organik Yaprak Parçacığı" };
+        Vector3[] vertices =
+        {
+            new Vector3(-0.50f, 0f, 0f),
+            new Vector3(-0.27f, 0.16f, 0f),
+            new Vector3(0f, 0.23f, 0f),
+            new Vector3(0.28f, 0.14f, 0f),
+            new Vector3(0.50f, 0f, 0f),
+            new Vector3(0.25f, -0.14f, 0f),
+            new Vector3(0f, -0.22f, 0f),
+            new Vector3(-0.27f, -0.15f, 0f)
+        };
+        int[] front = { 0, 1, 7, 1, 2, 7, 2, 6, 7, 2, 3, 6, 3, 5, 6, 3, 4, 5 };
+        int[] triangles = new int[front.Length * 2];
+        for (int i = 0; i < front.Length; i += 3)
+        {
+            triangles[i] = front[i];
+            triangles[i + 1] = front[i + 1];
+            triangles[i + 2] = front[i + 2];
+            int back = front.Length + i;
+            triangles[back] = front[i + 2];
+            triangles[back + 1] = front[i + 1];
+            triangles[back + 2] = front[i];
+        }
+        leaf.vertices = vertices;
+        leaf.triangles = triangles;
+        leaf.RecalculateNormals();
+        leaf.RecalculateBounds();
+        return leaf;
+    }
+
     private void BuildWildfireTree(Vector3 position, int variation, Material bark, Material needles, float height)
     {
         wildfireTreeCanopies.Add(position + Vector3.up * (height * 0.68f));
@@ -700,6 +1364,90 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
         material.renderQueue = 3000;
         return material;
+    }
+
+    public void BeginStormVisual()
+    {
+        for (int i = 0; i < stormRainSystems.Count; i++)
+        {
+            ParticleSystem rain = stormRainSystems[i];
+            if (rain == null) continue;
+            rain.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            rain.Play(true);
+        }
+        if (stormWindDebris != null)
+        {
+            stormWindDebris.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            stormWindDebris.Play(true);
+        }
+    }
+
+    public void UpdateStormVisual(float elapsed)
+    {
+        float gust = 0.45f + Mathf.Max(0f, Mathf.Sin(elapsed * 1.55f)) * 0.55f;
+        for (int i = 0; i < stormTrees.Count; i++)
+        {
+            Transform tree = stormTrees[i];
+            if (tree == null) continue;
+            float sway = gust * (2.0f + (i % 4) * 0.45f);
+            tree.rotation = stormTreeBaseRotations[i]
+                * Quaternion.Euler(Mathf.Sin(elapsed * 2.15f + i * 0.91f) * sway * 0.6f,
+                    0f, Mathf.Sin(elapsed * 1.7f + i * 1.37f) * sway);
+        }
+        for (int i = 0; i < stormClouds.Count; i++)
+        {
+            Transform cloud = stormClouds[i];
+            if (cloud == null) continue;
+            Vector3 position = stormCloudBasePositions[i];
+            position.x += Mathf.Sin(elapsed * 0.065f + i * 0.31f) * 1.35f;
+            cloud.position = position;
+        }
+        for (int i = 0; i < stormWaveCrests.Count; i++)
+        {
+            Transform wave = stormWaveCrests[i];
+            if (wave == null) continue;
+            Vector3 position = stormWaveBasePositions[i];
+            position.z += Mathf.Sin(elapsed * 2.2f + i * 0.73f) * 0.48f;
+            position.y += Mathf.Abs(Mathf.Sin(elapsed * 2.8f + i * 0.91f)) * 0.16f;
+            wave.position = position;
+        }
+
+        if (stormPowerPolePivot != null)
+        {
+            float fall = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(13.5f, 20.5f, elapsed));
+            float sway = Mathf.Sin(elapsed * 2.1f) * (1.8f + gust * 3.1f);
+            stormPowerPolePivot.localRotation = Quaternion.Euler(0f, 0f, sway + fall * 56f);
+        }
+
+        bool postEventVisible = elapsed >= 20.5f;
+        for (int i = 0; i < stormPostEventObjects.Count; i++)
+        {
+            GameObject item = stormPostEventObjects[i];
+            if (item != null && item.activeSelf != postEventVisible)
+                item.SetActive(postEventVisible);
+        }
+
+        if (stormLightning != null)
+        {
+            float flash = Mathf.Repeat(elapsed + 3.9f, 8.7f);
+            float intensity = flash < 0.075f
+                ? Mathf.Lerp(3.4f, 0f, flash / 0.075f)
+                : flash > 0.14f && flash < 0.185f
+                    ? Mathf.Lerp(1.25f, 0f, (flash - 0.14f) / 0.045f)
+                    : 0f;
+            stormLightning.intensity = intensity;
+        }
+    }
+
+    public void EndStormVisual()
+    {
+        for (int i = 0; i < stormRainSystems.Count; i++)
+            if (stormRainSystems[i] != null)
+                stormRainSystems[i].Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        if (stormWindDebris != null)
+            stormWindDebris.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        if (stormLightning != null)
+            stormLightning.intensity = 0f;
     }
 
     public void BeginWildfireVisual()
