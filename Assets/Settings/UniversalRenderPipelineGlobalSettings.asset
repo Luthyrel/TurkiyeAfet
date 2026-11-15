@@ -431,8 +431,8 @@ MonoBehaviour:
         m_OccluderDepthPyramidKernels: {fileID: 7200000, guid: 08b2b5fb307b0d249860612774a987da, type: 3}
         m_InstanceOcclusionCullingKernels: {fileID: 7200000, guid: f6d223acabc2f974795a5a7864b50e6c, type: 3}
         m_OcclusionCullingDebugKernels: {fileID: 7200000, guid: b23e766bcf50ca4438ef186b174557df, type: 3}
-        m_DebugOcclusionTestPS: {fileID: 4800000, guid: d3f0849180c2d0944bc71060693df100, type: 3}
-        m_DebugOccluderPS: {fileID: 4800000, guid: b3c92426a88625841ab15ca6a7917248, type: 3}
+        m_DebugOcclusionTestPS: {fileID: 4800000, guid: 7667264aaac444b1827ffa3b2e8d146e, type: 3}
+        m_DebugOccluderPS: {fileID: 4800000, guid: 9f6f8c5e53704e2988011c6051288f28, type: 3}
     - rid: 6852985685364965387
       type: {class: STP/RuntimeResources, ns: UnityEngine.Rendering, asm: Unity.RenderPipelines.Core.Runtime}
       data:
