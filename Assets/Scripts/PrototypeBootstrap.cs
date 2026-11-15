@@ -52,10 +52,24 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private readonly List<Vector3> stormWaveBasePositions = new List<Vector3>();
     private readonly List<GameObject> stormPostEventObjects = new List<GameObject>();
     private readonly List<ParticleSystem> stormRainSystems = new List<ParticleSystem>();
+    private Mesh stormIndoorWaterMesh;
+    private Mesh stormIndoorFoamMesh;
+    private GameObject stormIndoorWaterObject;
+    private GameObject stormIndoorFoamObject;
+    private Vector3[] stormIndoorWaterVertices;
+    private float[] stormIndoorWaterArrival;
+    private bool[] stormIndoorWaterFilled;
+    private readonly List<int> stormIndoorWaterTriangles = new List<int>();
+    private readonly List<Vector3> stormIndoorFoamVertices = new List<Vector3>();
+    private readonly List<int> stormIndoorFoamTriangles = new List<int>();
+    private int stormIndoorWaterCellsX;
+    private int stormIndoorWaterCellsZ;
+    private float stormIndoorWaterProgress;
+    private PrototypeInteractable stormDoorInteraction;
     private ParticleSystem stormWindDebris;
     private Light stormLightning;
     private Transform stormPowerPolePivot;
-    private Vector3 stormShelterPosition = new Vector3(0f, 0f, 5f);
+    private Vector3 stormShelterPosition = new Vector3(0f, 0f, 3.5f);
 
     public PrototypeScenario Scenario => scenario;
 
@@ -147,7 +161,10 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         else if (worldDisasterType == GameManager.DisasterType.Wildfire)
             scenario.ConfigureWildfire(wildfireSafePosition);
         else if (worldDisasterType == GameManager.DisasterType.Storm)
+        {
             scenario.ConfigureStorm(stormShelterPosition);
+            scenario.ConfigureStormDoor(stormDoorInteraction);
+        }
         player.SetControlsEnabled(false);
 
         ui = new GameObject("Arayüz Yöneticisi").AddComponent<PrototypeUI>();
@@ -504,6 +521,18 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         stormWaveBasePositions.Clear();
         stormPostEventObjects.Clear();
         stormRainSystems.Clear();
+        stormIndoorWaterMesh = null;
+        stormIndoorFoamMesh = null;
+        stormIndoorWaterObject = null;
+        stormIndoorFoamObject = null;
+        stormIndoorWaterVertices = null;
+        stormIndoorWaterArrival = null;
+        stormIndoorWaterFilled = null;
+        stormIndoorWaterTriangles.Clear();
+        stormIndoorFoamVertices.Clear();
+        stormIndoorFoamTriangles.Clear();
+        stormIndoorWaterProgress = 0f;
+        stormDoorInteraction = null;
         stormShelterPosition = new Vector3(0f, 0f, 3.5f);
         stormPowerPolePivot = null;
 
@@ -694,14 +723,14 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         CreateBox("Arka Saçak Oluk", new Vector3(0f, 3.96f, 8.52f), new Vector3(10.2f, 0.14f, 0.16f), metal);
         CreateBox("Yağmur İniş Borusu", new Vector3(4.79f, 2.0f, -1.72f), new Vector3(0.12f, 3.6f, 0.12f), metal);
 
-        // The passage is about 1.88 m wide and 2.9 m high; the hinged door starts open.
-        CreateBox("Giriş Kapısı Kasa Sol", new Vector3(-1.0f, 2.27f, frontZ - 0.20f), new Vector3(0.12f, 3.0f, 0.16f), trim);
-        CreateBox("Giriş Kapısı Kasa Sağ", new Vector3(1.0f, 2.27f, frontZ - 0.20f), new Vector3(0.12f, 3.0f, 0.16f), trim);
-        CreateBox("Giriş Kapısı Üst Kasa", new Vector3(0f, 3.77f, frontZ - 0.20f), new Vector3(2.08f, 0.16f, 0.16f), trim);
+        // The passage is about 1.88 m wide and 2.9 m high; the hinged door starts closed.
+        CreateBox("Giriş Kapısı Kasa Sol", new Vector3(-1.0f, 2.27f, frontZ), new Vector3(0.12f, 3.0f, 0.16f), trim);
+        CreateBox("Giriş Kapısı Kasa Sağ", new Vector3(1.0f, 2.27f, frontZ), new Vector3(0.12f, 3.0f, 0.16f), trim);
+        CreateBox("Giriş Kapısı Üst Kasa", new Vector3(0f, 3.77f, frontZ), new Vector3(2.08f, 0.16f, 0.16f), trim);
         GameObject stormDoorPivot = new GameObject("Açılıp Kapanan Fırtına Giriş Kapısı Menteşesi");
-        stormDoorPivot.transform.position = new Vector3(-0.91f, 0.78f, frontZ - 0.20f);
-        GameObject stormDoorLeaf = CreateBox("Sağlam Ev Ahşap Giriş Kapısı", stormDoorPivot.transform.position + new Vector3(0.91f, 1.43f, 0f),
-            new Vector3(1.82f, 2.86f, 0.12f), timber);
+        stormDoorPivot.transform.position = new Vector3(-0.935f, 0.81f, frontZ);
+        GameObject stormDoorLeaf = CreateBox("Sağlam Ev Ahşap Giriş Kapısı", stormDoorPivot.transform.position + new Vector3(0.935f, 1.44f, 0f),
+            new Vector3(1.87f, 2.88f, 0.12f), timber);
         stormDoorLeaf.transform.SetParent(stormDoorPivot.transform, true);
         CreateChildBox(stormDoorPivot.transform, "Fırtına Kapısı Etkileşim Kolu", new Vector3(1.67f, 1.52f, -0.08f),
             new Vector3(0.10f, 0.20f, 0.10f), accent);
@@ -709,11 +738,11 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         stormDoorPivot.transform.SetParent(doorControl.transform, true);
         BoxCollider doorTargetArea = doorControl.AddComponent<BoxCollider>();
         doorTargetArea.isTrigger = true;
-        doorTargetArea.center = new Vector3(0f, 2.18f, frontZ - 0.20f);
+        doorTargetArea.center = new Vector3(0f, 2.18f, frontZ);
         doorTargetArea.size = new Vector3(1.88f, 2.8f, 0.42f);
-        PrototypeInteractable stormDoorInteraction = doorControl.AddComponent<PrototypeInteractable>();
-        stormDoorInteraction.Configure(PrototypeAction.ToggleStormDoor, "E ile kapıyı kapat");
-        stormDoorInteraction.ConfigureStormDoor(stormDoorPivot.transform, stormDoorLeaf.GetComponent<Collider>(), true);
+        stormDoorInteraction = doorControl.AddComponent<PrototypeInteractable>();
+        stormDoorInteraction.Configure(PrototypeAction.ToggleStormDoor, "E ile kapıyı aç");
+        stormDoorInteraction.ConfigureStormDoor(stormDoorPivot.transform, stormDoorLeaf.GetComponent<Collider>(), false);
         for (int side = -1; side <= 1; side += 2)
         {
             float x = side * 2.95f;
@@ -724,18 +753,29 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             CreateBox("Pencere Altlığı " + side, new Vector3(x, 1.77f, frontZ - 0.28f), new Vector3(2.03f, 0.12f, 0.35f), timber);
         }
 
-        // A wind shutter is visibly hinged open before the player closes it.
-        GameObject openShutter = new GameObject("Fırtına Öncesi Açık Metal Panjur");
-        openShutter.transform.position = new Vector3(-4.05f, 2.48f, frontZ - 0.36f);
-        CreateChildBox(openShutter.transform, "Panjur Metal Paneli", Vector3.zero,
-            new Vector3(0.82f, 1.15f, 0.12f), shutter);
-        for (int slat = 0; slat < 5; slat++)
-            CreateChildBox(openShutter.transform, "Panjur Yatay Lata " + slat,
-                new Vector3(0f, -0.44f + slat * 0.22f, -0.075f), new Vector3(0.80f, 0.035f, 0.035f), metal);
+        // The open roller sits stacked above the glass; the slats descend to cover the window.
+        if (shutter.HasProperty("_Metallic")) shutter.SetFloat("_Metallic", 0.58f);
+        if (shutter.HasProperty("_Smoothness")) shutter.SetFloat("_Smoothness", 0.68f);
+        GameObject shutterAssembly = new GameObject("Fırtına Öncesi Açık Metal Panjur");
+        shutterAssembly.transform.position = new Vector3(-2.95f, 2.48f, frontZ - 0.36f);
+        CreateBox("Panjur Üst Rulo Muhafazası", new Vector3(-2.95f, 3.20f, frontZ - 0.36f),
+            new Vector3(1.68f, 0.16f, 0.18f), metal);
+        for (int side = -1; side <= 1; side += 2)
+            CreateBox("Panjur Yan Kılavuz Rayı " + side, new Vector3(-2.95f + side * 0.80f, 2.48f, frontZ - 0.36f),
+                new Vector3(0.07f, 1.20f, 0.14f), metal);
+        Transform[] shutterSlats = new Transform[12];
+        Vector3[] closedShutterPositions = new Vector3[12];
+        for (int slat = 0; slat < 12; slat++)
+        {
+            GameObject slatObject = CreateChildBox(shutterAssembly.transform, "Panjur Kilitli Metal Lata " + (slat + 1),
+                new Vector3(0f, 0.61f - slat * 0.012f, -0.045f), new Vector3(1.54f, 0.086f, 0.055f), shutter);
+            shutterSlats[slat] = slatObject.transform;
+            closedShutterPositions[slat] = new Vector3(0f, -0.515f + slat * 0.094f, -0.045f);
+        }
         GameObject shutterCrank = CreateBox("Panjur El Kolu", new Vector3(-1.75f, 1.15f, frontZ - 0.42f), new Vector3(0.18f, 0.38f, 0.16f), metal);
         PrototypeInteractable shutterTask = shutterCrank.AddComponent<PrototypeInteractable>();
         shutterTask.Configure(PrototypeAction.CloseStormShutters, "Metal panjuru kapat");
-        shutterTask.ConfigureMove(openShutter.transform, new Vector3(-2.95f, 2.48f, frontZ - 0.36f));
+        shutterTask.ConfigureStormShutter(shutterSlats, closedShutterPositions);
 
         GameObject outdoorFurniture = new GameObject("Sabitleme Bekleyen Balkon Sandalye ve Masa Takımı");
         outdoorFurniture.transform.position = new Vector3(-1.9f, 0f, -4.2f);
@@ -987,6 +1027,12 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         CreateStormRainEmitter("Sağ Kıyı Yağmuru", new Vector3(21f, 0f, 1f), new Vector3(20f, 0.12f, 43f), 560f, 7.5f, 0.8f, rainMaterial);
         CreateStormRainEmitter("Arka Kıyı Yağmuru", new Vector3(0f, 0f, 16f), new Vector3(22f, 0.12f, 12f), 170f, 0f, 3.5f, rainMaterial);
 
+        Material stormWaterMaterial = MakeMaterial("Kapıdan İçeri Akan Fırtına Suyu", new Color32(46, 126, 148, 205));
+        ConfigureStormWaterMaterial(stormWaterMaterial);
+        Material stormWaterFrontMaterial = MakeMaterial("Fırtına Suyu Akış Sınırı", new Color32(153, 218, 222, 225));
+        ConfigureStormWaterMaterial(stormWaterFrontMaterial);
+        BuildStormIndoorWater(stormWaterMaterial, stormWaterFrontMaterial);
+
         GameObject debrisObject = new GameObject("Rüzgârda Sürüklenen Yaprak ve Küçük Dallar");
         stormWindDebris = debrisObject.AddComponent<ParticleSystem>();
         stormWindDebris.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -1103,6 +1149,186 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
         material.renderQueue = 3000;
         return material;
+    }
+
+    private void ConfigureStormWaterMaterial(Material material)
+    {
+        if (material == null) return;
+        material.SetOverrideTag("RenderType", "Transparent");
+        if (material.HasProperty("_Surface")) material.SetFloat("_Surface", 1f);
+        if (material.HasProperty("_SrcBlend")) material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        if (material.HasProperty("_DstBlend")) material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        if (material.HasProperty("_ZWrite")) material.SetInt("_ZWrite", 0);
+        if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.92f);
+        material.DisableKeyword("_ALPHATEST_ON");
+        material.EnableKeyword("_ALPHABLEND_ON");
+        material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.renderQueue = 3000;
+    }
+
+    private void BuildStormIndoorWater(Material waterMaterial, Material foamMaterial)
+    {
+        const float minX = -4.75f;
+        const float minZ = -1.75f;
+        const float cellSize = 0.25f;
+        stormIndoorWaterCellsX = 38;
+        stormIndoorWaterCellsZ = 38;
+        int verticesX = stormIndoorWaterCellsX + 1;
+        int verticesZ = stormIndoorWaterCellsZ + 1;
+        stormIndoorWaterVertices = new Vector3[verticesX * verticesZ];
+        stormIndoorWaterArrival = new float[stormIndoorWaterCellsX * stormIndoorWaterCellsZ];
+        stormIndoorWaterFilled = new bool[stormIndoorWaterArrival.Length];
+
+        for (int z = 0; z < stormIndoorWaterCellsZ; z++)
+        {
+            for (int x = 0; x < stormIndoorWaterCellsX; x++)
+            {
+                float worldX = minX + (x + 0.5f) * cellSize;
+                float worldZ = minZ + (z + 0.5f) * cellSize;
+                float distance = Vector2.Distance(new Vector2(worldX, worldZ), new Vector2(0f, minZ));
+                float basinVariation = (Mathf.PerlinNoise((worldX + 13f) * 0.42f, (worldZ + 29f) * 0.39f) - 0.5f) * 0.78f;
+                float flowingVariation = Mathf.Sin(worldX * 1.12f + worldZ * 0.57f) * 0.18f
+                    + Mathf.Sin(worldZ * 1.48f - worldX * 0.81f) * 0.14f;
+                stormIndoorWaterArrival[z * stormIndoorWaterCellsX + x] =
+                    Mathf.Max(0f, (distance - 0.35f + basinVariation + flowingVariation) / 2.35f);
+            }
+        }
+
+        stormIndoorWaterObject = new GameObject("Evin Zeminine Yayılan Fırtına Suyu");
+        MeshFilter waterFilter = stormIndoorWaterObject.AddComponent<MeshFilter>();
+        MeshRenderer waterRenderer = stormIndoorWaterObject.AddComponent<MeshRenderer>();
+        stormIndoorWaterMesh = new Mesh { name = "Düzensiz Dalgalı İç Mekân Su Yüzeyi" };
+        stormIndoorWaterMesh.MarkDynamic();
+        waterFilter.sharedMesh = stormIndoorWaterMesh;
+        waterRenderer.sharedMaterial = waterMaterial;
+        waterRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        waterRenderer.receiveShadows = false;
+        stormIndoorWaterObject.SetActive(false);
+
+        stormIndoorFoamObject = new GameObject("Su Akışının Kesikli Köpüklü Kenarları");
+        MeshFilter foamFilter = stormIndoorFoamObject.AddComponent<MeshFilter>();
+        MeshRenderer foamRenderer = stormIndoorFoamObject.AddComponent<MeshRenderer>();
+        stormIndoorFoamMesh = new Mesh { name = "Dağınık İnce Su Köpüğü" };
+        stormIndoorFoamMesh.MarkDynamic();
+        foamFilter.sharedMesh = stormIndoorFoamMesh;
+        foamRenderer.sharedMaterial = foamMaterial;
+        foamRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        foamRenderer.receiveShadows = false;
+        stormIndoorFoamObject.SetActive(false);
+    }
+
+    private void AddStormFoamQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+    {
+        int first = stormIndoorFoamVertices.Count;
+        stormIndoorFoamVertices.Add(a);
+        stormIndoorFoamVertices.Add(b);
+        stormIndoorFoamVertices.Add(c);
+        stormIndoorFoamVertices.Add(d);
+        stormIndoorFoamTriangles.Add(first);
+        stormIndoorFoamTriangles.Add(first + 1);
+        stormIndoorFoamTriangles.Add(first + 2);
+        stormIndoorFoamTriangles.Add(first + 2);
+        stormIndoorFoamTriangles.Add(first + 1);
+        stormIndoorFoamTriangles.Add(first + 3);
+    }
+
+    private void UpdateStormIndoorWater(bool exposed, float deltaTime)
+    {
+        if (stormIndoorWaterMesh == null || stormIndoorWaterVertices == null)
+            return;
+
+        stormIndoorWaterProgress = Mathf.MoveTowards(stormIndoorWaterProgress, exposed ? 5.7f : 0f,
+            deltaTime * (exposed ? 1.45f : 0.72f));
+        if (!exposed && stormIndoorWaterProgress <= 0.001f)
+        {
+            if (stormIndoorWaterObject.activeSelf) stormIndoorWaterObject.SetActive(false);
+            if (stormIndoorFoamObject.activeSelf) stormIndoorFoamObject.SetActive(false);
+            return;
+        }
+
+        const float minX = -4.75f;
+        const float minZ = -1.75f;
+        const float cellSize = 0.25f;
+        int verticesX = stormIndoorWaterCellsX + 1;
+        float waterLevel = 0.824f + Mathf.Clamp01((stormIndoorWaterProgress - 3.4f) / 2.3f) * 0.085f;
+        for (int z = 0; z < verticesX; z++)
+        {
+            for (int x = 0; x < verticesX; x++)
+            {
+                float worldX = minX + x * cellSize;
+                float worldZ = minZ + z * cellSize;
+                float ripple = Mathf.Sin(Time.time * 2.2f + worldX * 1.35f + worldZ * 0.82f) * 0.006f
+                    + Mathf.Sin(Time.time * 1.45f - worldX * 0.67f + worldZ * 1.14f) * 0.004f;
+                stormIndoorWaterVertices[z * verticesX + x] = new Vector3(worldX, waterLevel + ripple, worldZ);
+            }
+        }
+
+        stormIndoorWaterTriangles.Clear();
+        stormIndoorFoamVertices.Clear();
+        stormIndoorFoamTriangles.Clear();
+        for (int cell = 0; cell < stormIndoorWaterArrival.Length; cell++)
+            stormIndoorWaterFilled[cell] = stormIndoorWaterProgress > 0.03f
+                && stormIndoorWaterArrival[cell] <= stormIndoorWaterProgress;
+
+        int totalWetCells = 0;
+        for (int z = 0; z < stormIndoorWaterCellsZ; z++)
+        {
+            for (int x = 0; x < stormIndoorWaterCellsX; x++)
+            {
+                int cell = z * stormIndoorWaterCellsX + x;
+                if (!stormIndoorWaterFilled[cell]) continue;
+
+                totalWetCells++;
+                int lowerLeft = z * verticesX + x;
+                int upperLeft = (z + 1) * verticesX + x;
+                int lowerRight = lowerLeft + 1;
+                int upperRight = upperLeft + 1;
+                stormIndoorWaterTriangles.Add(lowerLeft);
+                stormIndoorWaterTriangles.Add(upperLeft);
+                stormIndoorWaterTriangles.Add(lowerRight);
+                stormIndoorWaterTriangles.Add(lowerRight);
+                stormIndoorWaterTriangles.Add(upperLeft);
+                stormIndoorWaterTriangles.Add(upperRight);
+
+                float x0 = minX + x * cellSize;
+                float x1 = x0 + cellSize;
+                float z0 = minZ + z * cellSize;
+                float z1 = z0 + cellSize;
+                float foamY = waterLevel + 0.012f;
+                const float foamWidth = 0.052f;
+                bool skipFoam = (x * 17 + z * 31) % 4 == 0;
+                if (!skipFoam && (z == 0 || !stormIndoorWaterFilled[cell - stormIndoorWaterCellsX]))
+                    AddStormFoamQuad(new Vector3(x0, foamY, z0), new Vector3(x0, foamY, z0 + foamWidth),
+                        new Vector3(x1, foamY, z0), new Vector3(x1, foamY, z0 + foamWidth));
+                if (!skipFoam && (z == stormIndoorWaterCellsZ - 1 || !stormIndoorWaterFilled[cell + stormIndoorWaterCellsX]))
+                    AddStormFoamQuad(new Vector3(x0, foamY, z1 - foamWidth), new Vector3(x0, foamY, z1),
+                        new Vector3(x1, foamY, z1 - foamWidth), new Vector3(x1, foamY, z1));
+                if (!skipFoam && (x == 0 || !stormIndoorWaterFilled[cell - 1]))
+                    AddStormFoamQuad(new Vector3(x0, foamY, z0), new Vector3(x0, foamY, z1),
+                        new Vector3(x0 + foamWidth, foamY, z0), new Vector3(x0 + foamWidth, foamY, z1));
+                if (!skipFoam && (x == stormIndoorWaterCellsX - 1 || !stormIndoorWaterFilled[cell + 1]))
+                    AddStormFoamQuad(new Vector3(x1 - foamWidth, foamY, z0), new Vector3(x1 - foamWidth, foamY, z1),
+                        new Vector3(x1, foamY, z0), new Vector3(x1, foamY, z1));
+            }
+        }
+
+        bool visible = totalWetCells > 0;
+        if (stormIndoorWaterObject.activeSelf != visible)
+            stormIndoorWaterObject.SetActive(visible);
+        if (stormIndoorFoamObject.activeSelf != visible)
+            stormIndoorFoamObject.SetActive(visible);
+        // Foam topology changes with the moving shoreline; clear old triangle indices
+        // before assigning this frame's shorter or longer vertex list.
+        stormIndoorWaterMesh.Clear(false);
+        stormIndoorFoamMesh.Clear(false);
+        stormIndoorWaterMesh.vertices = stormIndoorWaterVertices;
+        stormIndoorWaterMesh.SetTriangles(stormIndoorWaterTriangles, 0, false);
+        stormIndoorWaterMesh.RecalculateNormals();
+        stormIndoorWaterMesh.RecalculateBounds();
+        stormIndoorFoamMesh.SetVertices(stormIndoorFoamVertices);
+        stormIndoorFoamMesh.SetTriangles(stormIndoorFoamTriangles, 0, false);
+        stormIndoorFoamMesh.RecalculateNormals();
+        stormIndoorFoamMesh.RecalculateBounds();
     }
 
     private Mesh CreateStormLeafMesh()
@@ -1439,8 +1665,14 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         }
     }
 
+    public void SetStormDoorExposureVisual(bool exposed)
+    {
+        UpdateStormIndoorWater(exposed, Time.deltaTime);
+    }
+
     public void EndStormVisual()
     {
+        PrototypeAudio.SetStormRain(false, false);
         for (int i = 0; i < stormRainSystems.Count; i++)
             if (stormRainSystems[i] != null)
                 stormRainSystems[i].Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);

@@ -24,7 +24,7 @@ public sealed class PrototypeScenario : MonoBehaviour
     private const float LandslideRunDuration = 18f;
     private const float WildfireRunDuration = 24f;
     private const float WildfireSafeHoldDuration = 3f;
-    private const float StormDuration = 28f;
+    private const float StormDuration = 18f;
     private const float StormGustInterval = 3.8f;
 
     private static readonly string[] TrappedQuestions =
@@ -130,6 +130,7 @@ public sealed class PrototypeScenario : MonoBehaviour
     private bool stormSheltered;
     private bool stormWasSheltered;
     private bool stormShelterAwarded;
+    private PrototypeInteractable stormDoor;
     private float stormTimer;
     private float stormGustTimer;
     private Vector3 stormShelterCenter = new Vector3(0f, 0f, 5f);
@@ -286,6 +287,11 @@ public sealed class PrototypeScenario : MonoBehaviour
         stormScenario = true;
         stormShelterCenter = shelterCenter;
         CurrentPhase = Phase.Preparation;
+    }
+
+    public void ConfigureStormDoor(PrototypeInteractable door)
+    {
+        stormDoor = door;
     }
 
     public void AddStormPreparationTask(PrototypeInteractable task)
@@ -577,9 +583,14 @@ public sealed class PrototypeScenario : MonoBehaviour
         {
             bool isOpen = target.ToggleStormDoor();
             PrototypeAudio.PlayDoorOpen();
+            bool stormActive = CurrentPhase == Phase.Storm;
+            PrototypeAudio.SetStormRain(stormActive, isOpen);
+            bootstrap.SetStormDoorExposureVisual(stormActive && isOpen);
             bootstrap.ShowNotice(isOpen
-                ? "Kapıyı açtın. İç odaya gir; fırtına sırasında kapıyı kapatıp pencerelerden uzakta kal."
-                : "Giriş kapısını kapattın. Sağlam binanın iç odasında kal.");
+                ? stormActive
+                    ? "Kapı açık kaldı: rüzgâr içeri vuruyor ve yağmur suyu zeminde ilerliyor. Hemen kapat."
+                    : "Kapıyı açtın. İç odaya geç; fırtına başladığında kapıyı kapat."
+                : "Giriş kapısını kapattın. Fırtına sırasında sağlam binanın iç odasında kal.");
             RefreshHud();
             return;
         }
@@ -1390,6 +1401,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         foreach (PrototypeInteractable task in stormPreparationTasks)
             if (task != null) task.SetGuidance(false);
         bootstrap.BeginStormVisual();
+        PrototypeAudio.SetStormRain(true, stormDoor != null && stormDoor.IsStormDoorOpen);
+        bootstrap.SetStormDoorExposureVisual(stormDoor != null && stormDoor.IsStormDoorOpen);
         bootstrap.ShowNotice("Fırtına başladı! Ağaçlardan, pencerelerden ve direklerden uzaklaş. En yakın sağlam binanın penceresiz iç bölümüne gir ve fırtına boyunca dışarı çıkma.");
         RefreshHud();
     }
@@ -1401,7 +1414,10 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         stormTimer += Time.deltaTime;
         bootstrap.UpdateStormVisual(stormTimer);
-        bool isSheltered = IsPlayerInStormShelter();
+        bool doorOpen = stormDoor != null && stormDoor.IsStormDoorOpen;
+        PrototypeAudio.SetStormRain(true, doorOpen);
+        bootstrap.SetStormDoorExposureVisual(doorOpen);
+        bool isSheltered = IsPlayerInStormShelter() && !doorOpen;
         bool isInsideHouse = IsPlayerInsideStormHouse();
         if (isSheltered)
         {
@@ -1421,27 +1437,36 @@ public sealed class PrototypeScenario : MonoBehaviour
             {
                 stormWasSheltered = false;
                 stormSheltered = false;
-                if (!isInsideHouse)
+                if (!isInsideHouse || doorOpen)
                 {
                     Score = Mathf.Max(0, Score - 35);
-                    bootstrap.ShowNotice("Fırtına sürerken güvenli alanın dışına çıktın. Hemen sağlam binanın içine dön. -35 puan.");
+                    bootstrap.ShowNotice(doorOpen
+                        ? "Kapıyı açık bıraktığın için yağmur suyu içeri yayıldı; iç oda güvenli değil. Kapat. -35 puan."
+                        : "Fırtına sürerken güvenli alanın dışına çıktın. Hemen sağlam binanın içine dön. -35 puan.");
                 }
             }
 
-            if (!isInsideHouse)
+            if (!isInsideHouse || doorOpen)
             {
                 float gustEnvelope = 0.30f + 0.70f * Mathf.Max(0f, Mathf.Sin(stormTimer * 1.75f));
-                Vector3 wind = new Vector3(1f, 0f, 0.18f).normalized;
+                if (doorOpen)
+                    gustEnvelope *= 0.72f;
+                Vector3 wind = doorOpen
+                    ? new Vector3(0.28f, 0f, 1f).normalized
+                    : new Vector3(1f, 0f, 0.18f).normalized;
                 if (player != null)
                 {
-                    player.ApplyStormWind(wind * (gustEnvelope * Time.deltaTime * 0.78f));
-                    player.SetShake(gustEnvelope * 0.004f);
+                    float windStrength = doorOpen ? 1.35f : 0.78f;
+                    player.ApplyStormWind(wind * (gustEnvelope * Time.deltaTime * windStrength));
+                    player.SetShake(gustEnvelope * (doorOpen ? 0.012f : 0.004f));
                 }
                 stormGustTimer -= Time.deltaTime;
                 if (stormGustTimer <= 0f)
                 {
                     stormGustTimer = StormGustInterval + Mathf.Sin(stormTimer * 0.7f) * 0.8f;
-                    bootstrap.ShowNotice("Kuvvetli rüzgâr açık alanda dengenizi bozuyor. Sağlam binanın içine sığın.");
+                    bootstrap.ShowNotice(doorOpen
+                        ? "Kapı açık: rüzgâr içeri vuruyor, su eşikten zemine yayılıyor. Kapıyı kapatıp pencerelerden uzak dur."
+                        : "Kuvvetli rüzgâr açık alanda dengenizi bozuyor. Sağlam binanın içine sığın.");
                 }
             }
             else
@@ -1453,7 +1478,7 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         if (stormTimer >= StormDuration)
         {
-            if (!stormSheltered || !IsPlayerInStormShelter())
+            if (!stormSheltered || !IsPlayerInStormShelter() || (stormDoor != null && stormDoor.IsStormDoorOpen))
             {
                 FailStormScenario("Fırtına dinene kadar sağlam yapının içinde ve pencerelerden uzakta kalınamadı.");
                 return;

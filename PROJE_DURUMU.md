@@ -4,11 +4,13 @@ Son güncelleme: 2026-11-15
 
 ## Güncel Özet
 
-Türkçe, 3D afet farkındalığı oyunu. 81 il haritasından il seçilir; seçilen ilin eğitim senaryosu açılır. Deprem, sel/taşkın ve heyelan akışları birbirinden bağımsız çalışır. Oyun içeriğinin büyük bölümü kodla oluşturulur.
+Türkçe, 3D afet farkındalığı oyunu. 81 il haritasından il seçilir; seçilen ilin eğitim senaryosu açılır. Deprem, sel/taşkın, heyelan ve fırtına akışları birbirinden bağımsız çalışır. Oyun içeriğinin büyük bölümü kodla oluşturulur.
 
 Kullanıcı daha önce sel suyunun en yüksek seviyesinde içeride kalınca boğulma/başarısızlık akışının tetiklendiğini doğruladı; HUD'da görev metniyle puanın üst üste gelmesi de düzeltildi. Bu önceki doğrulama, aşağıdaki yeni heyelan değişikliklerini kapsamaz.
 
 Heyelan senaryosu bu çalışmada baştan ele alındı: tabela tıklama görevleri kaldırıldı, doğal yamaç ve çok aşamalı fizik akışı kuruldu. Kod güncel; Unity Play Mode doğrulamasını kullanıcı yapacak.
+
+Fırtına senaryosunda ev kapısının açık/kapalı durumu barınma güvenliğine bağlandı. Kapı açıkken içeri sığ su yayılıyor, oyuncu rüzgâr etkisi alıyor ve güvenli barınma koşulu sağlanmıyor; kapatınca su geri çekiliyor. Yağmur sesi gerçek bir CC0 kaydına geçirildi ve kapı kapalıyken belirgin biçimde kısılıyor. Kullanıcı son oyun denemesinde mevcut bir sorun olmadığını bildirdi.
 
 ## Teknik Bilgiler
 
@@ -50,13 +52,21 @@ Heyelan senaryosu bu çalışmada baştan ele alındı: tabela tıklama görevle
 - Senaryo eğitim amaçlıdır; gerçek zamanlı/yerel heyelan uyarısı veya il bazında risk haritası değildir. Kod değişiklikleri kullanıcı tarafından Unity Play Mode'da kontrol edilmedi.
 - İçerik eğitim amaçlıdır; gerçek zamanlı/yerel heyelan uyarısı veya il bazında risk haritası değildir.
 
+### Fırtına
+
+- Fırtına senaryosunda oyuncu hazırlık görevlerinden sonra sağlam evin içine girip kapıyı kapatmalı, pencerelerden uzakta kalmalı ve kısa fırtına süresince barınmalıdır.
+- Kapı başlangıçta kapalıdır ve oyuncu etkileşimiyle açılıp kapanır. Fırtına sırasında kapı açık kalırsa içeri düzensiz dalgalı kenarla yayılan sığ su görseli oluşur; oyuncu içeri savrulan rüzgâr ve kamera sarsıntısı etkisi alır. Kapı açıkken güvenli barınma puanı kazanılamaz; fırtına bu koşulda biterse senaryo başarısız olur. Kapı kapanınca su kademeli olarak geri çekilir.
+- Fırtına 18 saniye sürer. Yağmur sesi yerel Mixkit seslerinden değil, `Assets/Resources/Audio/StormRain.mp3` içindeki gerçek yağmur kaydından gelir. Kapı kapalıyken ses seviyesi belirgin biçimde düşürülür, açıkken yükselir; fırtına bitince kademeli olarak kapanır.
+- Kullanıcı, son Play Mode denemesinde oyunda sorun olmadığını bildirdi. Son ses seviyesi ayarı ve su mesh düzeltmesi ayrıca oyun içinde doğrulanmadı.
+- Yağmur kaydı Freesound'da colorsCrimsonTears tarafından CC0 lisansıyla yayımlanan “Rainfall” kaydıdır: https://freesound.org/people/colorsCrimsonTears/sounds/532681/
+
 ## Harita, Arayüz ve Ses
 
 - 81 il, gerçek il sınırlarıyla seçilebilir. Tamamlanan afet illeri gri gösterilir ve yeniden seçilebilir.
 - İl seçimi kartında imlecin üzerindeki ilin eğitim senaryosu ve afet türü gösterilir.
 - Sol üst görev paneli uzun görev metinlerine göre büyür; puan satırı görevlerle çakışmaz.
 - Sel geri sayımı mevcut hazırlık bildiriminin içinde gösterilir. Etkileşim olmayan boş noktaya basınca yanıltıcı geçici sel görevi mesajı gösterilmez.
-- Oyun içi sesler yerel Mixkit ses dosyaları ve üretilen telefon sesi üzerinden oynatılır; arka plan müziği kullanılmaz.
+- Oyun içi sesler yerel Mixkit dosyaları, üretilen telefon sesi ve fırtına için gerçek yağmur kaydı üzerinden oynatılır; arka plan müziği kullanılmaz.
 
 ## Başlıca Kaynak Dosyalar
 
@@ -68,9 +78,10 @@ Heyelan senaryosu bu çalışmada baştan ele alındı: tabela tıklama görevle
 - Assets/Scripts/PrototypeLandslideDebrisImpact.cs — Heyelan kaya ve toprak kütlelerinin oyuncuya çarpma sonucunu bildirir.
 - Assets/Scripts/PrototypePlayerController.cs — Oyuncu hareketi, kamera, etkileşim ve sel suyunda hareket etkisi.
 - Assets/Scripts/PrototypeUI.cs — Menü, il kartı, görev HUD'ı, geri sayım ve sonuç ekranları.
-- Assets/Scripts/PrototypeAudio.cs — Hareket ve etkileşim sesleri.
+- Assets/Scripts/PrototypeAudio.cs — Hareket/etkileşim sesleri, fırtına yağmuru ve kapı açık/kapalı ses seviyesi.
 - Assets/Resources/ProvinceMap/ — İl verisi, harita görseli ve seçim maskesi.
 - Assets/Resources/Audio/Mixkit/ — Oyunda kullanılan yerel ses dosyaları.
+- Assets/Resources/Audio/StormRain.mp3 — Fırtına sırasında döngülenen CC0 yağmur kaydı.
 - Assets/Scenes/DepremPrototip.unity — Başlangıç sahnesi.
 
 ## Doğrulama ve Mevcut Durum
@@ -79,7 +90,7 @@ Heyelan senaryosu bu çalışmada baştan ele alındı: tabela tıklama görevle
 - Kullanıcı sel suyunda kalma, boğulma sonucu ve güncel oyun durumunu Play Mode'da kontrol etti; boğulma akışının çalıştığını ve şu anda açık sorun/doğrulanmamış iş bulunmadığını bildirdi.
 - Son HUD düzenlemesi görev metninin uzunluğuna göre panel yüksekliğini ayarlıyor.
 - Son kaynak değişikliklerinde git diff --check temiz çıktı.
-- Şu an için açık hata veya bekleyen doğrulama işi bulunmuyor.
+- Kullanıcının bildirdiği son oyun denemesinde açık sorun yok. Yeni fırtına su mesh'i, yağmur kaydı ve kapalı kapıdaki daha düşük ses seviyesi Unity Play Mode'da ayrıca doğrulanmadı.
 
 ## Bilinen Tasarım Sınırları
 

@@ -43,6 +43,8 @@ public sealed class PrototypeInteractable : MonoBehaviour
     private Transform stormDoorPivot;
     private Collider stormDoorCollider;
     private bool stormDoorOpen;
+    private Transform[] stormShutterSlats;
+    private Vector3[] stormShutterClosedPositions;
 
     private Renderer[] renderers;
     private Color[] originalColors;
@@ -64,6 +66,7 @@ public sealed class PrototypeInteractable : MonoBehaviour
     public Vector3 HeldGripFaceAxis => heldGripFaceAxis;
     public string TargetDisplayName => action == PrototypeAction.CollectBagItem ? actionName : gameObject.name;
     public bool IsComplete { get; private set; }
+    public bool IsStormDoorOpen => stormDoorOpen;
     public Transform BagContentsRoot => openBagInterior != null ? openBagInterior.transform : transform;
 
     public void Configure(PrototypeAction newAction, string newActionName)
@@ -101,7 +104,14 @@ public sealed class PrototypeInteractable : MonoBehaviour
         stormDoorPivot = pivot;
         stormDoorCollider = doorCollider;
         stormDoorOpen = initiallyOpen;
+        actionName = stormDoorOpen ? "E ile kapıyı kapat" : "E ile kapıyı aç";
         ApplyStormDoorState();
+    }
+
+    public void ConfigureStormShutter(Transform[] slats, Vector3[] closedLocalPositions)
+    {
+        stormShutterSlats = slats;
+        stormShutterClosedPositions = closedLocalPositions;
     }
 
     public bool ToggleStormDoor()
@@ -324,7 +334,10 @@ public sealed class PrototypeInteractable : MonoBehaviour
 
         SetGuidance(false);
         IsComplete = true;
-        if (moveObjectOnComplete && objectToMove != null)
+        if (action == PrototypeAction.CloseStormShutters && stormShutterSlats != null
+            && stormShutterClosedPositions != null && stormShutterSlats.Length == stormShutterClosedPositions.Length)
+            StartCoroutine(CloseStormShutterSlats());
+        else if (moveObjectOnComplete && objectToMove != null)
             objectToMove.position = completedPosition;
 
         if (action == PrototypeAction.CutFloodPower && floodSwitchLever != null)
@@ -366,6 +379,30 @@ public sealed class PrototypeInteractable : MonoBehaviour
                     child.gameObject.SetActive(true);
             }
         }
+    }
+
+    private IEnumerator CloseStormShutterSlats()
+    {
+        Vector3[] startPositions = new Vector3[stormShutterSlats.Length];
+        for (int i = 0; i < stormShutterSlats.Length; i++)
+            if (stormShutterSlats[i] != null)
+                startPositions[i] = stormShutterSlats[i].localPosition;
+
+        const float duration = 0.65f;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+            for (int i = 0; i < stormShutterSlats.Length; i++)
+                if (stormShutterSlats[i] != null)
+                    stormShutterSlats[i].localPosition = Vector3.Lerp(startPositions[i], stormShutterClosedPositions[i], t);
+            yield return null;
+        }
+
+        for (int i = 0; i < stormShutterSlats.Length; i++)
+            if (stormShutterSlats[i] != null)
+                stormShutterSlats[i].localPosition = stormShutterClosedPositions[i];
     }
 
     private void CacheRenderers()

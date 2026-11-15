@@ -6,6 +6,9 @@ public sealed class PrototypeAudio : MonoBehaviour
 
     private AudioSource effectsSource;
     private AudioSource movementSource;
+    private AudioSource stormRainSource;
+    private AudioClip stormRainLoop;
+    private float stormRainTargetVolume;
 
     private AudioClip footsteps;
     private AudioClip softSteps;
@@ -46,6 +49,13 @@ public sealed class PrototypeAudio : MonoBehaviour
         movementSource.loop = true;
         movementSource.volume = 0.36f;
 
+        stormRainSource = gameObject.AddComponent<AudioSource>();
+        stormRainSource.playOnAwake = false;
+        stormRainSource.spatialBlend = 0f;
+        stormRainSource.loop = true;
+        stormRainSource.volume = 0f;
+        stormRainSource.dopplerLevel = 0f;
+
         footsteps = Load("Footsteps");
         // Crouching reuses the same indoor recording at a slower, quieter pace.
         softSteps = Load("Footsteps");
@@ -65,6 +75,8 @@ public sealed class PrototypeAudio : MonoBehaviour
         taskComplete = Load("TaskComplete");
         floodCallRing = CreatePhoneRingClip();
         floodCallConnect = CreatePhoneConnectClip();
+        stormRainLoop = Resources.Load<AudioClip>("Audio/StormRain");
+        stormRainSource.clip = stormRainLoop;
 
     }
 
@@ -72,6 +84,36 @@ public sealed class PrototypeAudio : MonoBehaviour
     {
         if (Instance == this)
             Instance = null;
+    }
+
+    private void Update()
+    {
+        if (stormRainSource == null) return;
+        float transitionSpeed = stormRainTargetVolume < stormRainSource.volume ? 1.8f : 0.8f;
+        stormRainSource.volume = Mathf.MoveTowards(stormRainSource.volume, stormRainTargetVolume,
+            Time.unscaledDeltaTime * transitionSpeed);
+        if (stormRainTargetVolume <= 0f && stormRainSource.volume <= 0.001f && stormRainSource.isPlaying)
+            stormRainSource.Stop();
+    }
+
+    public static void SetStormRain(bool playing, bool doorOpen)
+    {
+        if (Instance == null || Instance.stormRainSource == null)
+            return;
+
+        if (playing)
+        {
+            if (!Instance.stormRainSource.isPlaying)
+            {
+                Instance.stormRainSource.volume = 0f;
+                Instance.stormRainSource.Play();
+            }
+            Instance.stormRainTargetVolume = doorOpen ? 0.48f : 0.055f;
+        }
+        else
+        {
+            Instance.stormRainTargetVolume = 0f;
+        }
     }
 
     private AudioClip Load(string clipName)
