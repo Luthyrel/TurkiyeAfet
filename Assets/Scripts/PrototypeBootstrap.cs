@@ -517,6 +517,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         BuildFloodHouse(wall, roof, wood, concrete, green);
         BuildFloodNeighborhood(concrete, roof, wall, wood);
         BuildFloodTasks(wood, green);
+        BuildInvisibleMapBoundary("Sel", new Vector3(0f, 0f, 1f), 56f, 32f);
     }
 
     private void BuildLandslideWorld()
@@ -571,6 +572,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         BuildLandslideRefuge(safeGreen, amber, trunk, darkMetal, screen, emergencyRed);
         BuildLandslideDebris(soil, clay, shale, stone, stoneLight, wetMud, freshMud);
         CreateLandslideDust();
+        BuildInvisibleMapBoundary("Heyelan", new Vector3(0f, 0f, 2f), 52f, 54f);
     }
 
     private void BuildWildfireWorld()
@@ -713,6 +715,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
         BuildWildfireFront(forestFloor, grass, bark, flame, ember);
         BuildWildfireSmoke();
+        BuildInvisibleMapBoundary("Orman Yangını", Vector3.zero, 76f, 64f);
     }
 
     private void BuildStormWorld()
@@ -863,6 +866,33 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         BuildStormNeighborhood(grass, plaster, roof, treeBark, foliage, foliageLight);
         BuildStormUtilities(timber, darkMetal, wire, yellow);
         BuildStormWeatherEffects();
+        BuildInvisibleMapBoundary("Fırtına", new Vector3(0f, 0f, 1f), 78f, 60f);
+    }
+
+    private void BuildInvisibleMapBoundary(string mapName, Vector3 groundCenter, float groundWidth, float groundDepth)
+    {
+        const float wallThickness = 1f;
+        const float wallHeight = 30f;
+        float wallCenterY = wallHeight * 0.5f - 0.5f;
+        float halfWidth = groundWidth * 0.5f;
+        float halfDepth = groundDepth * 0.5f;
+
+        AddInvisibleBoundaryCollider(mapName + " Görünmez Sınır Batı", new Vector3(groundCenter.x - halfWidth, wallCenterY, groundCenter.z),
+            new Vector3(wallThickness, wallHeight, groundDepth + wallThickness * 2f));
+        AddInvisibleBoundaryCollider(mapName + " Görünmez Sınır Doğu", new Vector3(groundCenter.x + halfWidth, wallCenterY, groundCenter.z),
+            new Vector3(wallThickness, wallHeight, groundDepth + wallThickness * 2f));
+        AddInvisibleBoundaryCollider(mapName + " Görünmez Sınır Güney", new Vector3(groundCenter.x, wallCenterY, groundCenter.z - halfDepth),
+            new Vector3(groundWidth, wallHeight, wallThickness));
+        AddInvisibleBoundaryCollider(mapName + " Görünmez Sınır Kuzey", new Vector3(groundCenter.x, wallCenterY, groundCenter.z + halfDepth),
+            new Vector3(groundWidth, wallHeight, wallThickness));
+    }
+
+    private void AddInvisibleBoundaryCollider(string objectName, Vector3 position, Vector3 size)
+    {
+        GameObject boundary = new GameObject(objectName);
+        boundary.transform.position = position;
+        BoxCollider collider = boundary.AddComponent<BoxCollider>();
+        collider.size = size;
     }
 
     private void BuildStormHouse(Material wall, Material shade, Material foundation, Material roof, Material timber,
