@@ -1320,12 +1320,13 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
     private Material CreateStormParticleMaterial(string name, Color tint)
     {
-        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-        if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null) shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended");
-        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (shader == null) shader = Shader.Find("Standard");
-        if (shader == null) return MakeMaterial(name, tint);
+        // Particle shaders found only by name can be stripped from player builds.
+        // Reuse the already referenced URP/Lit shader from the storm scene instead.
+        Shader shader = null;
+        if (materials.TryGetValue("Fırtına Kıyı Çayırı", out Material stormGround) && stormGround != null)
+            shader = stormGround.shader;
+        if (shader == null)
+            return MakeMaterial(name, tint);
         Material material = new Material(shader) { name = name, color = tint };
         if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", tint);
         if (material.HasProperty("_Color")) material.SetColor("_Color", tint);
@@ -1766,10 +1767,9 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
     private Material CreateWildfireSmokeMaterial(Texture2D texture)
     {
-        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-        if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null) shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended");
-        if (shader == null && materials.TryGetValue("Yangın Tatbikatı Orman Zemini", out Material forestMaterial))
+        // Match the forest's referenced shader so the generated smoke material survives builds.
+        Shader shader = null;
+        if (materials.TryGetValue("Yangın Tatbikatı Orman Zemini", out Material forestMaterial))
             shader = forestMaterial != null ? forestMaterial.shader : null;
         if (shader == null)
             return null;
