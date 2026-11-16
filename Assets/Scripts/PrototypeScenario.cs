@@ -1415,11 +1415,11 @@ public sealed class PrototypeScenario : MonoBehaviour
             return;
 
         stormTimer += Time.deltaTime;
-        bootstrap.UpdateStormVisual(stormTimer);
         bool doorOpen = stormDoor != null && stormDoor.IsStormDoorOpen;
+        bool isSheltered = IsPlayerInStormShelter() && !doorOpen;
+        bootstrap.UpdateStormVisual(stormTimer, isSheltered);
         PrototypeAudio.SetStormRain(true, doorOpen);
         bootstrap.SetStormDoorExposureVisual(doorOpen);
-        bool isSheltered = IsPlayerInStormShelter() && !doorOpen;
         bool isInsideHouse = IsPlayerInsideStormHouse();
         if (isSheltered)
         {
@@ -2001,9 +2001,9 @@ public sealed class PrototypeScenario : MonoBehaviour
     }
     private void EndEarthquake()
     {
+        bool wasHoldingTable = player.IsHoldingTable;
         player.SetShake(0f);
-        player.EndTableHold();
-        player.SetCrouched(false);
+        player.EndTableHoldSafely();
         bootstrap.SetHoldZoneVisible(false);
 
         collapseOccurred = Random.value < CollapseChance;
@@ -2020,6 +2020,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         CurrentPhase = Phase.Aftershock;
         if (!safeActionComplete)
             bootstrap.ShowNotice("Sarsıntı bitti. Güvenli bölgede çöküp masaya 5 saniye tutunma koşulunu tamamlayamadın. Puanından kesinti yapılmadı.");
+        else if (wasHoldingTable)
+            bootstrap.ShowNotice("Sarsıntı durdu. Masadan uzaklaşana kadar çömel; çevreni kontrol et, gaz kokusu varsa vanayı güvenliyse kapat, kapı ve pencereleri aç ve elektrik düğmelerine dokunmadan çık.");
         else
             bootstrap.ShowNotice("Sarsıntı durdu. Önce çevreni kontrol et; gaz kokusu varsa vanayı güvenliyse kapat, kapı ve pencereleri aç ve elektrik düğmelerine dokunmadan çık.");
 

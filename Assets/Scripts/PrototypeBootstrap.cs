@@ -1005,20 +1005,6 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         CreateBox("İç Oda Alanı İnce Kenar Şeridi", stormShelterPosition + new Vector3(0f, 0.068f, -3.68f), new Vector3(7.55f, 0.025f, 0.045f), accent);
         CreateBox("İç Oda Alanı Kenar Şeridi Sol", stormShelterPosition + new Vector3(-3.68f, 0.068f, 0f), new Vector3(0.045f, 0.025f, 7.55f), accent);
 
-        Material lamp = MakeMaterial("Sığınak Tavan Armatürü", new Color32(214, 220, 205, 255));
-        GameObject lampObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        lampObject.name = "Sığınağın İç Oda Armatürü";
-        lampObject.transform.position = new Vector3(0f, 2.95f, 5.2f);
-        lampObject.transform.localScale = new Vector3(0.36f, 0.16f, 0.36f);
-        lampObject.GetComponent<Renderer>().sharedMaterial = lamp;
-        Collider lampCollider = lampObject.GetComponent<Collider>();
-        if (lampCollider != null) lampCollider.enabled = false;
-        Light refugeLight = lampObject.AddComponent<Light>();
-        refugeLight.type = LightType.Point;
-        refugeLight.color = new Color(1f, 0.83f, 0.59f);
-        refugeLight.intensity = 2.0f;
-        refugeLight.range = 9f;
-
         // An in-world emergency phone lets the player report a downed line after the storm.
         Vector3 phonePosition = new Vector3(-1.55f, 1.18f, 5.35f);
         CreateBox("Fırtına Acil Telefon Sehpası Ayağı", phonePosition + new Vector3(0f, -0.60f, 0.14f), new Vector3(0.16f, 1.08f, 0.16f), timber);
@@ -1283,7 +1269,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         stormLightning.type = LightType.Directional;
         stormLightning.color = new Color(0.72f, 0.82f, 1f);
         stormLightning.intensity = 0f;
-        stormLightning.shadows = LightShadows.None;
+        // Let roofs and walls block the exterior flash from reaching the house interior.
+        stormLightning.shadows = LightShadows.Hard;
     }
 
     private ParticleSystem CreateStormRainEmitter(string objectName, Vector3 center, Vector3 bounds,
@@ -1664,7 +1651,16 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         if (wildfireTreeCanopies.Count == 0)
             return;
 
-        wildfireSmokeMaterial = CreateWildfireSmokeMaterial(CreateWildfireSmokeTexture());
+        Texture2D smokeTexture = CreateWildfireSmokeTexture();
+        wildfireSmokeMaterial = CreateWildfireSmokeMaterial(smokeTexture);
+        if (wildfireSmokeMaterial == null)
+        {
+            if (smokeTexture != null)
+                Destroy(smokeTexture);
+            Debug.LogWarning("Duman shader'ı build içinde bulunamadı; yangın dumanı kapatıldı.");
+            return;
+        }
+
         UnityEngine.Random.State previousRandomState = UnityEngine.Random.state;
         UnityEngine.Random.InitState(23981);
         const int smokeSources = 12;
@@ -1773,6 +1769,11 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
         if (shader == null) shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended");
+        if (shader == null && materials.TryGetValue("Yangın Tatbikatı Orman Zemini", out Material forestMaterial))
+            shader = forestMaterial != null ? forestMaterial.shader : null;
+        if (shader == null)
+            return null;
+
         Material material = new Material(shader) { name = "Duman - Yumuşak Gürültülü Hacim Katmanları" };
         if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
         if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", texture);
@@ -1812,7 +1813,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         }
     }
 
-    public void UpdateStormVisual(float elapsed)
+    public void UpdateStormVisual(float elapsed, bool playerInShelter)
     {
         float gust = 0.45f + Mathf.Max(0f, Mathf.Sin(elapsed * 1.55f)) * 0.55f;
         for (int i = 0; i < stormTrees.Count; i++)
@@ -1865,7 +1866,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                 : flash > 0.14f && flash < 0.185f
                     ? Mathf.Lerp(1.25f, 0f, (flash - 0.14f) / 0.045f)
                     : 0f;
-            stormLightning.intensity = intensity;
+            // A windowless refuge blocks the outside lightning flash.
+            stormLightning.intensity = playerInShelter ? 0f : intensity;
         }
     }
 
@@ -2537,19 +2539,32 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         shape.shapeType = ParticleSystemShapeType.Box;
         shape.scale = new Vector3(16f, 1.4f, 2.5f);
         ParticleSystemRenderer renderer = landslideDust.GetComponent<ParticleSystemRenderer>();
-        Shader particleShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-        if (particleShader == null)
-            particleShader = Shader.Find("Particles/Standard Unlit");
-        if (particleShader != null)
+        if (materials.TryGetValue("Akışkan Koyu Çamur", out Material mudMaterial)
+            && mudMaterial != null && mudMaterial.shader != null)
         {
-            Material particleMaterial = new Material(particleShader);
+            // Use the same URP shader already used by the landslide materials. Particle-only
+            // shaders can be stripped from player builds and then render bright pink.
+            Material particleMaterial = new Material(mudMaterial.shader);
             particleMaterial.name = "Heyelan Tozu Şeffaf Parçacık Malzemesi";
-            if (particleMaterial.HasProperty("_BaseColor"))
-                particleMaterial.SetColor("_BaseColor", new Color32(156, 130, 104, 180));
-            else if (particleMaterial.HasProperty("_Color"))
-                particleMaterial.SetColor("_Color", new Color32(156, 130, 104, 180));
+            Color dustTint = new Color32(156, 130, 104, 210);
+            if (particleMaterial.HasProperty("_BaseColor")) particleMaterial.SetColor("_BaseColor", dustTint);
+            if (particleMaterial.HasProperty("_Color")) particleMaterial.SetColor("_Color", dustTint);
+            particleMaterial.SetOverrideTag("RenderType", "Transparent");
+            if (particleMaterial.HasProperty("_Surface")) particleMaterial.SetFloat("_Surface", 1f);
+            if (particleMaterial.HasProperty("_Blend")) particleMaterial.SetFloat("_Blend", 0f);
+            if (particleMaterial.HasProperty("_SrcBlend"))
+                particleMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (particleMaterial.HasProperty("_DstBlend"))
+                particleMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            if (particleMaterial.HasProperty("_ZWrite")) particleMaterial.SetInt("_ZWrite", 0);
+            particleMaterial.DisableKeyword("_ALPHATEST_ON");
+            particleMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            particleMaterial.EnableKeyword("_ALPHABLEND_ON");
+            particleMaterial.renderQueue = 3000;
             renderer.sharedMaterial = particleMaterial;
         }
+        else
+            Debug.LogWarning("Heyelan parçacıkları için kullanılabilir URP materyali bulunamadı.");
         renderer.renderMode = ParticleSystemRenderMode.Billboard;
     }
 

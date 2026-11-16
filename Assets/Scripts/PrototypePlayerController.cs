@@ -313,6 +313,15 @@ public sealed class PrototypePlayerController : MonoBehaviour
         holdingTable = false;
     }
 
+    public void EndTableHoldSafely()
+    {
+        bool wasHoldingTable = holdingTable;
+        holdingTable = false;
+        crouched = wasHoldingTable;
+        SetCharacterControllerHeight(wasHoldingTable ? CrouchedHeight : StandingHeight);
+        verticalVelocity = -2f;
+    }
+
     public void SetCrouched(bool value)
     {
         if (holdingTable)

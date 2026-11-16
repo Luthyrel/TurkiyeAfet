@@ -371,15 +371,19 @@ public sealed class PrototypeUI : MonoBehaviour
             42, Color.white, TextAnchor.MiddleCenter);
 
         AddButton(pausePage.transform, "Devam", "Oyuna Devam Et",
-            new Vector2(0.35f, 0.49f), new Vector2(0.65f, 0.59f),
+            new Vector2(0.35f, 0.51f), new Vector2(0.65f, 0.60f),
             true, owner.ResumeGame);
 
         AddButton(pausePage.transform, "Yeniden Başlat", "Yeniden Başlat",
-            new Vector2(0.35f, 0.34f), new Vector2(0.65f, 0.44f),
+            new Vector2(0.35f, 0.40f), new Vector2(0.65f, 0.49f),
+            false, owner.RestartToMenu);
+
+        AddButton(pausePage.transform, "Menüye Geri Dön", "Menüye Geri Dön",
+            new Vector2(0.35f, 0.29f), new Vector2(0.65f, 0.38f),
             false, owner.RestartToMenu);
 
         AddButton(pausePage.transform, "Oyundan Çık", "Oyundan Çık",
-            new Vector2(0.35f, 0.19f), new Vector2(0.65f, 0.29f),
+            new Vector2(0.35f, 0.18f), new Vector2(0.65f, 0.27f),
             false, owner.QuitGame);
     }
 
