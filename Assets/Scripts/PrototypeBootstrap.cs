@@ -144,6 +144,14 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         else
             BuildWorld();
 
+        if (worldDisasterType == GameManager.DisasterType.Earthquake)
+        {
+            RenderSettings.ambientIntensity = 0.6f;
+            Light earthquakeSun = GameObject.Find("Yumuşak Gün Işığı")?.GetComponent<Light>();
+            if (earthquakeSun != null)
+                earthquakeSun.intensity = 0f;
+        }
+
         GameObject playerObject = new GameObject("Oyuncu", typeof(CharacterController));
         player = playerObject.AddComponent<PrototypePlayerController>();
         Vector3 playerSpawn = worldDisasterType switch
