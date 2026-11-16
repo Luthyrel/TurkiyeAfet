@@ -1120,10 +1120,15 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         stormTrees.Add(tree.transform);
         stormTreeBaseRotations.Add(tree.transform.rotation);
 
+        float height = 5.2f + (index % 4) * 0.6f;
+        CapsuleCollider trunkHitbox = tree.AddComponent<CapsuleCollider>();
+        trunkHitbox.center = new Vector3(0f, height * 0.46f, 0f);
+        trunkHitbox.radius = 0.22f;
+        trunkHitbox.height = height * 0.92f;
+
         GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         trunk.name = "Islak Ağaç Gövdesi";
         trunk.transform.SetParent(tree.transform, false);
-        float height = 5.2f + (index % 4) * 0.6f;
         trunk.transform.localPosition = new Vector3(0f, height * 0.46f, 0f);
         trunk.transform.localScale = new Vector3(0.30f, height * 0.48f, 0.30f);
         trunk.GetComponent<Renderer>().sharedMaterial = bark;
