@@ -656,6 +656,8 @@ public sealed class PrototypePlayerController : MonoBehaviour
             RefreshFirstPersonGripAnchor(itemDepth * 0.5f + 0.006f, palmAdvanceRatio);
             if (string.Equals(heldBagItem.ActionName, "Acil durum radyosu", System.StringComparison.OrdinalIgnoreCase))
                 firstPersonItemAnchor.position += playerCamera.transform.right * 0.04f;
+            else if (string.Equals(heldBagItem.ActionName, "Cep telefonu", System.StringComparison.OrdinalIgnoreCase))
+                firstPersonItemAnchor.position -= playerCamera.transform.forward * 0.055f;
             firstPersonItemAnchor.localRotation *= gripCorrection;
         }
 
@@ -738,6 +740,13 @@ public sealed class PrototypePlayerController : MonoBehaviour
             bool wasHoldingTable = holdingTable;
             if (wasHoldingTable && scenario != null)
                 scenario.CancelTableHold("Tutunmayı bıraktın. Sarsıntı sürerken yeniden güvenli konuma geçip E veya sol tıkla tutun.");
+            bool tryingToStand = crouched;
+            if (tryingToStand && !HasStandingClearance())
+            {
+                PrototypeBootstrap.Instance?.ShowNotice("Üstünde masa veya tavan engeli var. Güvenli boşluk bulana kadar çömel.");
+                return;
+            }
+
             crouched = !crouched;
             if (!wasHoldingTable)
                 PrototypeAudio.PlayCrouch();
@@ -856,6 +865,24 @@ public sealed class PrototypePlayerController : MonoBehaviour
         character.height = height;
         character.radius = height <= HoldingHeight + 0.001f ? 0.28f : 0.32f;
         character.center = new Vector3(0f, height * 0.5f, 0f);
+    }
+
+    private bool HasStandingClearance()
+    {
+        if (character == null)
+            return true;
+
+        float radius = character.radius * 0.92f;
+        Vector3 bottom = transform.position + Vector3.up * radius;
+        Vector3 top = transform.position + Vector3.up * (StandingHeight - radius);
+        Collider[] blockers = Physics.OverlapCapsule(bottom, top, radius, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < blockers.Length; i++)
+        {
+            Collider blocker = blockers[i];
+            if (blocker != null && blocker != character && !blocker.transform.IsChildOf(transform))
+                return false;
+        }
+        return true;
     }
 
     private void RotatePlayer(Vector3 direction)
