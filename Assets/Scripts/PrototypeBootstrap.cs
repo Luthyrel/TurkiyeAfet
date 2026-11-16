@@ -109,6 +109,10 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
         worldDisasterType = GameManager.Instance != null
             ? GameManager.Instance.SelectedDisaster : GameManager.DisasterType.Earthquake;
+        GameObject earthquakeTerrain = FindSceneObjectIncludingInactive("Deprem Haritası");
+        if (earthquakeTerrain != null)
+            earthquakeTerrain.SetActive(worldDisasterType == GameManager.DisasterType.Earthquake);
+
         if (ProvinceManager.Instance != null)
         {
             int savedPlate = ProvinceManager.Instance.GetLastProvincePlate();
@@ -208,6 +212,23 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         sun.intensity = 1.15f;
         sun.shadows = LightShadows.Soft;
         sunObject.transform.rotation = Quaternion.Euler(42f, -28f, 0f);
+    }
+
+    private static GameObject FindSceneObjectIncludingInactive(string objectName)
+    {
+        GameObject[] roots = SceneManager.GetActiveScene().GetRootGameObjects();
+        for (int i = 0; i < roots.Length; i++)
+        {
+            if (roots[i].name == objectName)
+                return roots[i];
+
+            Transform[] children = roots[i].GetComponentsInChildren<Transform>(true);
+            for (int childIndex = 0; childIndex < children.Length; childIndex++)
+                if (children[childIndex].name == objectName)
+                    return children[childIndex].gameObject;
+        }
+
+        return null;
     }
 
     private void BuildWorld()

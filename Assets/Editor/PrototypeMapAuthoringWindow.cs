@@ -8,6 +8,7 @@ internal sealed class PrototypeMapAuthoringWindow : EditorWindow
     private const string PrototypeScenePath = "Assets/Scenes/DepremPrototip.unity";
     private const string PreviewRootName = "Oyun Haritası - Düzenleme Önizlemesi";
     private const string PlacementRootName = "Sahneye Yerleştirilen Harita Varlıkları";
+    private const string EarthquakeTerrainRootName = "Deprem Haritası";
     private const string SelectedDisasterKey = "TurkiyeAfet.MapAuthoring.SelectedDisaster";
     private const string PreviewDisasterKey = "TurkiyeAfet.MapAuthoring.PreviewDisaster";
     private static readonly string[] DisasterLabels = { "Deprem", "Sel", "Heyelan", "Orman yangını", "Fırtına" };
@@ -107,6 +108,7 @@ internal sealed class PrototypeMapAuthoringWindow : EditorWindow
         bool generated;
         try
         {
+            SetEarthquakeTerrainActive(disasterIndex == (int)GameManager.DisasterType.Earthquake, true);
             generated = bootstrap.GenerateMapEditingPreviewForEditor((GameManager.DisasterType)disasterIndex);
         }
         finally
@@ -131,8 +133,49 @@ internal sealed class PrototypeMapAuthoringWindow : EditorWindow
         {
             Undo.DestroyObjectImmediate(preview);
             EditorPrefs.DeleteKey(PreviewDisasterKey);
+            SetEarthquakeTerrainActive(false, true);
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         }
+    }
+
+    private static void SetEarthquakeTerrainActive(bool active, bool moveUnderEarthquakeRoot)
+    {
+        GameObject terrain = FindInActiveScene("Terrain");
+        GameObject terrainRoot = FindInActiveScene(EarthquakeTerrainRootName);
+        if (terrain == null && terrainRoot == null)
+            return;
+
+        if (terrainRoot == null && moveUnderEarthquakeRoot)
+        {
+            terrainRoot = new GameObject(EarthquakeTerrainRootName);
+            Undo.RegisterCreatedObjectUndo(terrainRoot, "Deprem harita grubunu oluştur");
+        }
+
+        if (terrainRoot == null)
+            return;
+
+        if (terrain != null && terrain.transform.parent != terrainRoot.transform)
+            Undo.SetTransformParent(terrain.transform, terrainRoot.transform, "Terrain'i deprem haritasına ekle");
+
+        terrainRoot.SetActive(active);
+        EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+    }
+
+    private static GameObject FindInActiveScene(string objectName)
+    {
+        GameObject[] roots = SceneManager.GetActiveScene().GetRootGameObjects();
+        for (int i = 0; i < roots.Length; i++)
+        {
+            if (roots[i].name == objectName)
+                return roots[i];
+
+            Transform[] children = roots[i].GetComponentsInChildren<Transform>(true);
+            for (int childIndex = 0; childIndex < children.Length; childIndex++)
+                if (children[childIndex].name == objectName)
+                    return children[childIndex].gameObject;
+        }
+
+        return null;
     }
 
     private static GameObject FindPlacementRoot()
