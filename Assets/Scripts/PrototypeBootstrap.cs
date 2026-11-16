@@ -1,6 +1,11 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+#if UNITY_EDITOR
+using System.IO;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+#endif
 
 [DefaultExecutionOrder(-100)]
 public sealed class PrototypeBootstrap : MonoBehaviour
@@ -92,6 +97,11 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
     private void Start()
     {
+#if UNITY_EDITOR
+        GameObject editingPreview = GameObject.Find("Oyun Haritası - Düzenleme Önizlemesi");
+        if (editingPreview != null)
+            Destroy(editingPreview);
+#endif
         Time.timeScale = 1f;
         Application.targetFrameRate = 120;
         Screen.sleepTimeout = SleepTimeout.NeverSleep;
@@ -256,6 +266,171 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         SinirEkle("Ön Sınır", new Vector3(-9.8f, 1.5f, -4.7f), new Vector3(5.8f, 3f, 0.2f));
         SinirEkle("Arka Sınır", new Vector3(-9.8f, 1.5f, 0.1f), new Vector3(5.8f, 3f, 0.2f));
     }
+
+#if UNITY_EDITOR
+    public bool GenerateMapEditingPreviewForEditor(GameManager.DisasterType disasterType)
+    {
+        if (EditorApplication.isPlaying)
+        {
+            EditorUtility.DisplayDialog("Harita düzenleme", "Önce Play Mode'u durdur.", "Tamam");
+            return false;
+        }
+
+        Scene scene = SceneManager.GetActiveScene();
+        GameObject oldPreview = GameObject.Find("Oyun Haritası - Düzenleme Önizlemesi");
+        if (oldPreview != null)
+            Undo.DestroyObjectImmediate(oldPreview);
+
+        GameObject placementRoot = GameObject.Find("Sahneye Yerleştirilen Harita Varlıkları");
+        if (placementRoot == null)
+        {
+            placementRoot = new GameObject("Sahneye Yerleştirilen Harita Varlıkları");
+            Undo.RegisterCreatedObjectUndo(placementRoot, "Harita nesne kökü oluştur");
+        }
+
+        GameObject previewRoot = new GameObject("Oyun Haritası - Düzenleme Önizlemesi");
+        previewRoot.tag = "EditorOnly";
+        GameObject previewScenarioObject = new GameObject("Harita Önizleme Senaryosu");
+        HashSet<GameObject> existingRoots = new HashSet<GameObject>();
+        GameObject[] rootsBeforeBuild = scene.GetRootGameObjects();
+        for (int i = 0; i < rootsBeforeBuild.Length; i++)
+            existingRoots.Add(rootsBeforeBuild[i]);
+
+        materials.Clear();
+        scenario = previewScenarioObject.AddComponent<PrototypeScenario>();
+        worldDisasterType = disasterType;
+
+        try
+        {
+            switch (disasterType)
+            {
+                case GameManager.DisasterType.Flood:
+                    BuildFloodWorld();
+                    break;
+                case GameManager.DisasterType.Landslide:
+                    BuildLandslideWorld();
+                    break;
+                case GameManager.DisasterType.Wildfire:
+                    BuildWildfireWorld();
+                    break;
+                case GameManager.DisasterType.Storm:
+                    BuildStormWorld();
+                    break;
+                default:
+                    BuildWorld();
+                    break;
+            }
+
+            GameObject[] rootsAfterBuild = scene.GetRootGameObjects();
+            for (int i = 0; i < rootsAfterBuild.Length; i++)
+            {
+                GameObject root = rootsAfterBuild[i];
+                if (root != previewRoot && !existingRoots.Contains(root))
+                    root.transform.SetParent(previewRoot.transform, true);
+            }
+
+            SaveMapPreviewMaterials(previewRoot);
+            DestroyImmediate(previewScenarioObject);
+            scenario = null;
+            materials.Clear();
+            EditorSceneManager.MarkSceneDirty(scene);
+            AssetDatabase.SaveAssets();
+            Debug.Log(disasterType + " haritası Scene görünümüne düzenleme önizlemesi olarak eklendi.");
+            return true;
+        }
+        catch (System.Exception exception)
+        {
+            GameObject[] remainingRoots = scene.GetRootGameObjects();
+            for (int i = 0; i < remainingRoots.Length; i++)
+            {
+                GameObject root = remainingRoots[i];
+                if (root != null && !existingRoots.Contains(root))
+                    Undo.DestroyObjectImmediate(root);
+            }
+            if (previewScenarioObject != null)
+                DestroyImmediate(previewScenarioObject);
+            if (previewRoot != null)
+                Undo.DestroyObjectImmediate(previewRoot);
+            scenario = null;
+            materials.Clear();
+            Debug.LogException(exception);
+            EditorUtility.DisplayDialog("Harita önizlemesi oluşturulamadı",
+                "Console'daki hatayı kontrol et. Sahnedeki kalıcı nesneler korunmuştur.", "Tamam");
+            return false;
+        }
+    }
+
+    private static void SaveMapPreviewMaterials(GameObject previewRoot)
+    {
+        const string parentFolder = "Assets/MapAuthoring";
+        const string materialFolder = "Assets/MapAuthoring/PreviewMaterials";
+        if (!AssetDatabase.IsValidFolder(parentFolder))
+            AssetDatabase.CreateFolder("Assets", "MapAuthoring");
+        if (!AssetDatabase.IsValidFolder(materialFolder))
+            AssetDatabase.CreateFolder(parentFolder, "PreviewMaterials");
+
+        Dictionary<Material, Material> savedBySource = new Dictionary<Material, Material>();
+        Dictionary<Material, Material> transientBySource = new Dictionary<Material, Material>();
+        Renderer[] renderers = previewRoot.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Material[] sharedMaterials = renderers[i].sharedMaterials;
+            bool changed = false;
+            for (int materialIndex = 0; materialIndex < sharedMaterials.Length; materialIndex++)
+            {
+                Material source = sharedMaterials[materialIndex];
+                if (source == null)
+                    continue;
+
+                if (savedBySource.TryGetValue(source, out Material savedMaterial))
+                {
+                    sharedMaterials[materialIndex] = savedMaterial;
+                    changed = true;
+                    continue;
+                }
+
+                string fileName = MakeMapPreviewMaterialFileName(source.name);
+                string path = materialFolder + "/" + fileName + ".mat";
+                Material materialAsset = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (materialAsset == null)
+                {
+                    materialAsset = new Material(source);
+                    materialAsset.name = source.name;
+                    AssetDatabase.CreateAsset(materialAsset, path);
+                }
+                else
+                {
+                    EditorUtility.CopySerialized(source, materialAsset);
+                    materialAsset.name = source.name;
+                    EditorUtility.SetDirty(materialAsset);
+                }
+
+                savedBySource.Add(source, materialAsset);
+                if (!AssetDatabase.Contains(source))
+                    transientBySource[source] = source;
+                sharedMaterials[materialIndex] = materialAsset;
+                changed = true;
+            }
+
+            if (changed)
+                renderers[i].sharedMaterials = sharedMaterials;
+        }
+
+        foreach (Material transient in transientBySource.Values)
+        {
+            if (transient != null)
+                DestroyImmediate(transient);
+        }
+    }
+
+    private static string MakeMapPreviewMaterialFileName(string materialName)
+    {
+        char[] invalidCharacters = Path.GetInvalidFileNameChars();
+        for (int i = 0; i < invalidCharacters.Length; i++)
+            materialName = materialName.Replace(invalidCharacters[i], '_');
+        return string.IsNullOrWhiteSpace(materialName) ? "PreviewMaterial" : materialName;
+    }
+#endif
 
     private void BuildFloodWorld()
     {
@@ -494,10 +669,10 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         GameObject beacon = CreateBox("Uzakta Görünen Yeşil Tahliye Feneri", wildfireSafePosition + new Vector3(0f, 4.55f, 0f),
             new Vector3(0.85f, 0.42f, 0.85f), beaconMat);
         Renderer beaconRenderer = beacon.GetComponent<Renderer>();
-        if (beaconRenderer != null && beaconRenderer.material.HasProperty("_EmissionColor"))
+        if (beaconRenderer != null && beaconRenderer.sharedMaterial != null && beaconRenderer.sharedMaterial.HasProperty("_EmissionColor"))
         {
-            beaconRenderer.material.EnableKeyword("_EMISSION");
-            beaconRenderer.material.SetColor("_EmissionColor", new Color(0.2f, 1f, 0.58f) * 2.2f);
+            beaconRenderer.sharedMaterial.EnableKeyword("_EMISSION");
+            beaconRenderer.sharedMaterial.SetColor("_EmissionColor", new Color(0.2f, 1f, 0.58f) * 2.2f);
         }
         Light beaconLight = beacon.AddComponent<Light>();
         beaconLight.type = LightType.Point;
@@ -1068,7 +1243,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         ParticleSystemRenderer debrisRenderer = stormWindDebris.GetComponent<ParticleSystemRenderer>();
         debrisRenderer.renderMode = ParticleSystemRenderMode.Mesh;
         debrisRenderer.mesh = CreateStormLeafMesh();
-        debrisRenderer.material = CreateStormParticleMaterial("Yağmurda Sürüklenen Yaprak Materyali", new Color(0.68f, 0.57f, 0.35f, 0.95f));
+        debrisRenderer.sharedMaterial = CreateStormParticleMaterial("Yağmurda Sürüklenen Yaprak Materyali", new Color(0.68f, 0.57f, 0.35f, 0.95f));
         debrisRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         debrisRenderer.receiveShadows = false;
         stormWindDebris.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -1121,7 +1296,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         renderer.renderMode = ParticleSystemRenderMode.Stretch;
         renderer.lengthScale = 5.8f;
         renderer.velocityScale = 0.12f;
-        renderer.material = material;
+        renderer.sharedMaterial = material;
         rain.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         stormRainSystems.Add(rain);
         return rain;
@@ -2145,10 +2320,10 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         foreach (Collider visualCollider in new[] { callScreen.GetComponent<Collider>(), callButton.GetComponent<Collider>(), handset.GetComponent<Collider>(), beacon.GetComponent<Collider>() })
             if (visualCollider != null) visualCollider.enabled = false;
         Renderer beaconRenderer = beacon.GetComponent<Renderer>();
-        if (beaconRenderer != null && beaconRenderer.material.HasProperty("_EmissionColor"))
+        if (beaconRenderer != null && beaconRenderer.sharedMaterial != null && beaconRenderer.sharedMaterial.HasProperty("_EmissionColor"))
         {
-            beaconRenderer.material.EnableKeyword("_EMISSION");
-            beaconRenderer.material.SetColor("_EmissionColor", new Color(0.2f, 0.9f, 0.55f) * 1.2f);
+            beaconRenderer.sharedMaterial.EnableKeyword("_EMISSION");
+            beaconRenderer.sharedMaterial.SetColor("_EmissionColor", new Color(0.2f, 0.9f, 0.55f) * 1.2f);
         }
         scenario.SetLandslideAfterTask(emergency);
     }
@@ -2344,7 +2519,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                 particleMaterial.SetColor("_BaseColor", new Color32(156, 130, 104, 180));
             else if (particleMaterial.HasProperty("_Color"))
                 particleMaterial.SetColor("_Color", new Color32(156, 130, 104, 180));
-            renderer.material = particleMaterial;
+            renderer.sharedMaterial = particleMaterial;
         }
         renderer.renderMode = ParticleSystemRenderMode.Billboard;
     }
@@ -2927,7 +3102,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         ring.startWidth = 0.045f;
         ring.endWidth = 0.045f;
         ring.numCapVertices = 3;
-        ring.material = MakeMaterial("Güvenli Bölge Işığı", new Color32(56, 207, 179, 255));
+        ring.sharedMaterial = MakeMaterial("Güvenli Bölge Işığı", new Color32(56, 207, 179, 255));
         for (int i = 0; i < ring.positionCount; i++)
         {
             float angle = Mathf.PI * 2f * i / ring.positionCount;
@@ -2941,7 +3116,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         arrow.positionCount = 4;
         arrow.startWidth = 0.055f;
         arrow.endWidth = 0.055f;
-        arrow.material = ring.material;
+        arrow.sharedMaterial = ring.sharedMaterial;
         arrow.SetPosition(0, new Vector3(0f, 0.005f, 0.03f));
         arrow.SetPosition(1, new Vector3(0f, 0.005f, 0.48f));
         arrow.SetPosition(2, new Vector3(-0.16f, 0.005f, 0.31f));
