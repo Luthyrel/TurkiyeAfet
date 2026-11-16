@@ -44,8 +44,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private ParticleSystem landslideDust;
     private int lastLandslideDustBurst = -1;
     private readonly List<GameObject> wildfireFlameLayers = new List<GameObject>();
-    private readonly List<Transform> wildfireFlameTongues = new List<Transform>();
-    private readonly List<Vector3> wildfireFlameBaseScales = new List<Vector3>();
+    private readonly List<Light> wildfireFlameLights = new List<Light>();
     private readonly List<Vector3> wildfireTreeCanopies = new List<Vector3>();
     private Material wildfireSmokeMaterial;
     private Vector3 wildfireSafePosition;
@@ -578,8 +577,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private void BuildWildfireWorld()
     {
         wildfireFlameLayers.Clear();
-        wildfireFlameTongues.Clear();
-        wildfireFlameBaseScales.Clear();
+        wildfireFlameLights.Clear();
         wildfireTreeCanopies.Clear();
         wildfireSafePosition = new Vector3(17f, 0f, 7f);
 
@@ -606,17 +604,14 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         Material emergencyRed = MakeMaterial("Yangın İhbarı Kırmızı", new Color32(195, 48, 34, 255));
         Material safeGreen = MakeMaterial("Orman Yangını Güvenli Alan", new Color32(48, 139, 101, 255));
         Material beaconMat = MakeMaterial("Tahliye Feneri Yeşil", new Color32(69, 235, 172, 255));
-        Material ember = MakeMaterial("Alev Çekirdeği", new Color32(255, 197, 69, 255));
-        Material flame = MakeMaterial("Alev Dış Katmanı", new Color32(237, 83, 32, 255));
-        if (flame.HasProperty("_EmissionColor"))
+        Texture2D flameTexture = CreateWildfireFlameTexture();
+        Material flameParticles = CreateWildfireParticleMaterial(flameTexture, "Alev - Düzensiz Isı Katmanlı Parçacık Materyali");
+        if (flameParticles != null && flameParticles.HasProperty("_EmissionColor"))
         {
-            flame.EnableKeyword("_EMISSION");
-            flame.SetColor("_EmissionColor", new Color(1f, 0.12f, 0.015f) * 1.8f);
-        }
-        if (ember.HasProperty("_EmissionColor"))
-        {
-            ember.EnableKeyword("_EMISSION");
-            ember.SetColor("_EmissionColor", new Color(1f, 0.48f, 0.08f) * 2.3f);
+            flameParticles.EnableKeyword("_EMISSION");
+            flameParticles.SetColor("_EmissionColor", new Color(1f, 0.42f, 0.12f) * 1.35f);
+            if (flameParticles.HasProperty("_EmissionMap"))
+                flameParticles.SetTexture("_EmissionMap", flameTexture);
         }
         CreateBox("Geniş Orman Zemini", new Vector3(0f, -0.3f, 0f), new Vector3(76f, 0.6f, 64f), forestFloor);
         for (int i = 0; i < 65; i++)
@@ -713,7 +708,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         Collider beaconCollider = beacon.GetComponent<Collider>();
         if (beaconCollider != null) beaconCollider.enabled = false;
 
-        BuildWildfireFront(forestFloor, grass, bark, flame, ember);
+        BuildWildfireFront(forestFloor, grass, flameParticles);
         BuildWildfireSmoke();
         BuildInvisibleMapBoundary("Orman Yangını", Vector3.zero, 76f, 64f);
     }
@@ -1614,6 +1609,11 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             crown.GetComponent<Renderer>().sharedMaterial = needles;
             Collider crownCollider = crown.GetComponent<Collider>();
             if (crownCollider != null) crownCollider.enabled = false;
+
+            // Compound foliage colliders keep the character from walking through the visible crown.
+            SphereCollider foliageCollider = tree.AddComponent<SphereCollider>();
+            foliageCollider.center = new Vector3(0f, height * (0.43f + tier * 0.145f), 0f);
+            foliageCollider.radius = width * 0.48f;
         }
         Rigidbody body = tree.AddComponent<Rigidbody>();
         body.isKinematic = true;
@@ -1624,9 +1624,9 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         collision.radius = 0.16f;
     }
 
-    private void BuildWildfireFront(Material forest, Material grass, Material bark, Material flame, Material ember)
+    private void BuildWildfireFront(Material forest, Material grass, Material flameMaterial)
     {
-        // Three distinct ignition pulses move from the forest edge toward the trail.
+        // Particle flames and sparks form a broad, irregular front without primitive flame-shaped colliders.
         for (int layer = 0; layer < 4; layer++)
         {
             GameObject pulse = new GameObject("Orman Yangını Alev Cephesi Dalgası " + (layer + 1));
@@ -1641,32 +1641,106 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                 Light glow = glowObject.AddComponent<Light>();
                 glow.type = LightType.Point;
                 glow.color = new Color(1f, 0.22f, 0.045f);
-                glow.intensity = 3.1f;
-                glow.range = 11f;
+                glow.intensity = 2.5f;
+                glow.range = 9f;
                 glow.shadows = LightShadows.None;
+                wildfireFlameLights.Add(glow);
             }
-            for (int i = 0; i < 13; i++)
-            {
-                float x = -14f + i * 1.7f;
-                if (x > 7f) continue;
-                GameObject flameRoot = new GameObject("Alev Kümesi " + i);
-                flameRoot.transform.SetParent(pulse.transform, false);
-                flameRoot.transform.localPosition = new Vector3(x, 0f, Mathf.Sin(i * 1.7f + layer) * 0.65f);
-                for (int tongue = 0; tongue < 3; tongue++)
-                {
-                    GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                    body.name = tongue == 0 ? "Alevin Kızıl Dış Dili" : tongue == 1 ? "Turuncu Alev" : "Sarı Sıcak Çekirdek";
-                    body.transform.SetParent(flameRoot.transform, false);
-                    float height = 1.05f + ((i + tongue + layer) % 4) * 0.34f;
-                    body.transform.localPosition = new Vector3((tongue - 1) * 0.18f, height * 0.37f, (tongue - 1) * 0.11f);
-                    body.transform.localScale = new Vector3(0.24f, height * 0.42f, 0.24f);
-                    wildfireFlameBaseScales.Add(body.transform.localScale);
-                    body.GetComponent<Renderer>().sharedMaterial = tongue == 0 ? flame : ember;
-                    Collider collider = body.GetComponent<Collider>();
-                    if (collider != null) collider.enabled = false;
-                    wildfireFlameTongues.Add(body.transform);
-                }
-            }
+
+            GameObject flameObject = new GameObject("Havada Dalgalanan Alev Parçacıkları");
+            flameObject.transform.SetParent(pulse.transform, false);
+            ParticleSystem flames = flameObject.AddComponent<ParticleSystem>();
+            var flameMain = flames.main;
+            flameMain.playOnAwake = true;
+            flameMain.loop = true;
+            flameMain.duration = 5f;
+            flameMain.startLifetime = new ParticleSystem.MinMaxCurve(1.05f, 1.9f);
+            flameMain.startSpeed = 0f;
+            flameMain.startSize3D = true;
+            flameMain.startSizeX = new ParticleSystem.MinMaxCurve(0.42f, 0.84f);
+            flameMain.startSizeY = new ParticleSystem.MinMaxCurve(1.15f, 2.35f);
+            flameMain.startSizeZ = new ParticleSystem.MinMaxCurve(0.16f, 0.34f);
+            flameMain.startColor = Color.white;
+            flameMain.gravityModifier = 0f;
+            flameMain.simulationSpace = ParticleSystemSimulationSpace.Local;
+            flameMain.maxParticles = 420;
+            var flameEmission = flames.emission;
+            flameEmission.rateOverTime = 64f;
+            var flameShape = flames.shape;
+            flameShape.shapeType = ParticleSystemShapeType.Box;
+            flameShape.scale = new Vector3(23f, 0.24f, 1.15f);
+            flameShape.position = new Vector3(-3.5f, 0.26f, 0f);
+            var flameVelocity = flames.velocityOverLifetime;
+            flameVelocity.enabled = true;
+            flameVelocity.space = ParticleSystemSimulationSpace.Local;
+            flameVelocity.x = new ParticleSystem.MinMaxCurve(-0.32f, 0.32f);
+            flameVelocity.y = new ParticleSystem.MinMaxCurve(1.45f, 2.6f);
+            flameVelocity.z = new ParticleSystem.MinMaxCurve(-0.2f, 0.2f);
+            var flameSize = flames.sizeOverLifetime;
+            flameSize.enabled = true;
+            flameSize.size = new ParticleSystem.MinMaxCurve(1f,
+                new AnimationCurve(new Keyframe(0f, 0.28f), new Keyframe(0.22f, 1f),
+                    new Keyframe(0.62f, 0.74f), new Keyframe(1f, 0.04f)));
+            var flameColor = flames.colorOverLifetime;
+            flameColor.enabled = true;
+            Gradient flameFade = new Gradient();
+            flameFade.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(new Color(1f, 0.79f, 0.43f), 0.55f),
+                    new GradientColorKey(new Color(0.48f, 0.12f, 0.035f), 1f) },
+                new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(0.98f, 0.12f),
+                    new GradientAlphaKey(0.72f, 0.7f), new GradientAlphaKey(0f, 1f) });
+            flameColor.color = new ParticleSystem.MinMaxGradient(flameFade);
+            var flameNoise = flames.noise;
+            flameNoise.enabled = true;
+            flameNoise.strength = new ParticleSystem.MinMaxCurve(0.18f, 0.46f);
+            flameNoise.frequency = 0.72f;
+            flameNoise.scrollSpeed = 0.8f;
+            flameNoise.damping = true;
+            ParticleSystemRenderer flameRenderer = flames.GetComponent<ParticleSystemRenderer>();
+            flameRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+            flameRenderer.sharedMaterial = flameMaterial;
+            flameRenderer.sortMode = ParticleSystemSortMode.Distance;
+            flameRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            flameRenderer.receiveShadows = false;
+
+            GameObject sparksObject = new GameObject("Yukarı Savrulan Korlar");
+            sparksObject.transform.SetParent(pulse.transform, false);
+            ParticleSystem sparks = sparksObject.AddComponent<ParticleSystem>();
+            var sparkMain = sparks.main;
+            sparkMain.playOnAwake = true;
+            sparkMain.loop = true;
+            sparkMain.duration = 4f;
+            sparkMain.startLifetime = new ParticleSystem.MinMaxCurve(0.65f, 1.65f);
+            sparkMain.startSpeed = new ParticleSystem.MinMaxCurve(1.2f, 4.3f);
+            sparkMain.startSize = new ParticleSystem.MinMaxCurve(0.025f, 0.07f);
+            sparkMain.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.32f, 0.055f), new Color(1f, 0.78f, 0.24f));
+            sparkMain.gravityModifier = -0.14f;
+            sparkMain.simulationSpace = ParticleSystemSimulationSpace.Local;
+            sparkMain.maxParticles = 120;
+            var sparkEmission = sparks.emission;
+            sparkEmission.rateOverTime = 17f;
+            var sparkShape = sparks.shape;
+            sparkShape.shapeType = ParticleSystemShapeType.Box;
+            sparkShape.scale = new Vector3(23f, 0.2f, 1.1f);
+            sparkShape.position = new Vector3(-3.5f, 0.3f, 0f);
+            var sparkVelocity = sparks.velocityOverLifetime;
+            sparkVelocity.enabled = true;
+            sparkVelocity.x = new ParticleSystem.MinMaxCurve(-0.9f, 0.9f);
+            sparkVelocity.y = new ParticleSystem.MinMaxCurve(1.7f, 4.4f);
+            sparkVelocity.z = new ParticleSystem.MinMaxCurve(-0.35f, 0.35f);
+            var sparkColor = sparks.colorOverLifetime;
+            sparkColor.enabled = true;
+            Gradient sparkFade = new Gradient();
+            sparkFade.SetKeys(
+                new[] { new GradientColorKey(new Color(1f, 0.8f, 0.34f), 0f), new GradientColorKey(new Color(0.85f, 0.18f, 0.035f), 1f) },
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.85f, 0.35f), new GradientAlphaKey(0f, 1f) });
+            sparkColor.color = new ParticleSystem.MinMaxGradient(sparkFade);
+            ParticleSystemRenderer sparkRenderer = sparks.GetComponent<ParticleSystemRenderer>();
+            sparkRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+            sparkRenderer.sharedMaterial = flameMaterial;
+            sparkRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            sparkRenderer.receiveShadows = false;
+
             for (int i = 0; i < 22; i++)
             {
                 float x = -15f + i * 1.05f;
@@ -1682,13 +1756,52 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         }
     }
 
+    private Texture2D CreateWildfireFlameTexture()
+    {
+        const int width = 128;
+        const int height = 192;
+        Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, true)
+        {
+            name = "Organik Alev Dili Flipbook Maskesi",
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear,
+            anisoLevel = 2
+        };
+        Color[] pixels = new Color[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            float v = y / (float)(height - 1);
+            float center = 0.5f + Mathf.Sin(v * 8.5f + 0.7f) * 0.075f;
+            float edgeNoise = Mathf.PerlinNoise(2.6f, v * 9f + 1.8f);
+            float halfWidth = Mathf.Max(0.012f, 0.47f * Mathf.Pow(1f - v, 0.68f)
+                * Mathf.Lerp(0.8f, 1.08f, edgeNoise));
+            for (int x = 0; x < width; x++)
+            {
+                float u = x / (float)(width - 1);
+                float distance = Mathf.Abs(u - center) / halfWidth;
+                float edge = 1f - Mathf.SmoothStep(0.78f, 1.08f, distance);
+                float turbulence = Mathf.PerlinNoise(u * 8.5f + 3.2f, v * 15f + 4.7f);
+                float alpha = edge * Mathf.Lerp(0.48f, 1f, turbulence);
+
+                float core = Mathf.Clamp01((1f - distance) * 1.7f) * (1f - v * 0.72f);
+                Color outer = Color.Lerp(new Color(0.42f, 0.035f, 0.008f), new Color(1f, 0.16f, 0.015f), 1f - v);
+                Color inner = Color.Lerp(new Color(1f, 0.32f, 0.025f), new Color(1f, 0.91f, 0.48f), core);
+                Color color = Color.Lerp(outer, inner, core * 0.88f);
+                pixels[y * width + x] = new Color(color.r, color.g, color.b, alpha);
+            }
+        }
+        texture.SetPixels(pixels);
+        texture.Apply(true, true);
+        return texture;
+    }
+
     private void BuildWildfireSmoke()
     {
         if (wildfireTreeCanopies.Count == 0)
             return;
 
         Texture2D smokeTexture = CreateWildfireSmokeTexture();
-        wildfireSmokeMaterial = CreateWildfireSmokeMaterial(smokeTexture);
+        wildfireSmokeMaterial = CreateWildfireParticleMaterial(smokeTexture);
         if (wildfireSmokeMaterial == null)
         {
             if (smokeTexture != null)
@@ -1800,7 +1913,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         return texture;
     }
 
-    private Material CreateWildfireSmokeMaterial(Texture2D texture)
+    private Material CreateWildfireParticleMaterial(Texture2D texture, string materialName = "Duman - Yumuşak Gürültülü Hacim Katmanları")
     {
         // Match the forest's referenced shader so the generated smoke material survives builds.
         Shader shader = null;
@@ -1809,7 +1922,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         if (shader == null)
             return null;
 
-        Material material = new Material(shader) { name = "Duman - Yumuşak Gürültülü Hacim Katmanları" };
+        Material material = new Material(shader) { name = materialName };
         if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
         if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", texture);
         if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", Color.white);
@@ -1935,14 +2048,11 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         for (int i = 0; i < wildfireFlameLayers.Count; i++)
             if (wildfireFlameLayers[i] != null && wildfireFlameLayers[i].activeSelf != (i < activeLayers))
                 wildfireFlameLayers[i].SetActive(i < activeLayers);
-        for (int i = 0; i < wildfireFlameTongues.Count; i++)
+        for (int i = 0; i < wildfireFlameLights.Count; i++)
         {
-            Transform tongue = wildfireFlameTongues[i];
-            if (tongue == null || !tongue.gameObject.activeInHierarchy) continue;
-            float flicker = 0.88f + Mathf.Sin(Time.time * 8.1f + i * 1.73f) * 0.12f;
-            Vector3 scale = wildfireFlameBaseScales[i];
-            scale.y *= flicker;
-            tongue.localScale = scale;
+            Light flameLight = wildfireFlameLights[i];
+            if (flameLight == null || !flameLight.gameObject.activeInHierarchy) continue;
+            flameLight.intensity = 2.15f + Mathf.PerlinNoise(Time.time * 3.7f, i * 5.1f) * 1.25f;
         }
     }
 
