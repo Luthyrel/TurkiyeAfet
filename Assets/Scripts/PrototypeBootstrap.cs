@@ -2718,14 +2718,26 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             new Vector3(0.25f, sideWindowTop - sideWindowBottom, sideWallBackWidth), wall);
         CreateBox("Sel Evi Sağ Duvarı Ön Pencere Yanı", new Vector3(right, (sideWindowBottom + sideWindowTop) * 0.5f, sideWindowCenterZ + sideWindowWidth * 0.5f + sideWallFrontWidth * 0.5f),
             new Vector3(0.25f, sideWindowTop - sideWindowBottom, sideWallFrontWidth), wall);
-        Material sideWindowGlass = MakeMaterial("Sel Evi Yan Pencere Camı", new Color32(105, 166, 190, 72));
+        Material sideWindowGlass = Resources.Load<Material>("SelPencereCami");
+        if (sideWindowGlass == null)
+            sideWindowGlass = MakeMaterial("Sel Evi Yan Pencere Camı", new Color32(105, 166, 190, 72));
         sideWindowGlass.SetOverrideTag("RenderType", "Transparent");
         if (sideWindowGlass.HasProperty("_Surface"))
             sideWindowGlass.SetFloat("_Surface", 1f);
-        sideWindowGlass.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        sideWindowGlass.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        sideWindowGlass.SetInt("_ZWrite", 0);
+        if (sideWindowGlass.HasProperty("_Blend")) sideWindowGlass.SetFloat("_Blend", 0f);
+        if (sideWindowGlass.HasProperty("_SrcBlend"))
+            sideWindowGlass.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        if (sideWindowGlass.HasProperty("_DstBlend"))
+            sideWindowGlass.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        if (sideWindowGlass.HasProperty("_SrcBlendAlpha"))
+            sideWindowGlass.SetInt("_SrcBlendAlpha", (int)UnityEngine.Rendering.BlendMode.One);
+        if (sideWindowGlass.HasProperty("_DstBlendAlpha"))
+            sideWindowGlass.SetInt("_DstBlendAlpha", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        if (sideWindowGlass.HasProperty("_ZWrite")) sideWindowGlass.SetInt("_ZWrite", 0);
+        if (sideWindowGlass.HasProperty("_AlphaClip")) sideWindowGlass.SetFloat("_AlphaClip", 0f);
         sideWindowGlass.DisableKeyword("_ALPHATEST_ON");
+        sideWindowGlass.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        sideWindowGlass.DisableKeyword("_ALPHAMODULATE_ON");
         sideWindowGlass.EnableKeyword("_ALPHABLEND_ON");
         sideWindowGlass.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
         sideWindowGlass.renderQueue = 3000;
@@ -2775,7 +2787,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             new Vector3(0.97f, 1.04f, 0f), new Vector3(1.94f, 2.08f, 0.12f),
             MakeMaterial("Giriş Kapısı Ceviz Ahşabı", new Color32(119, 78, 52, 255)));
         Collider leafCollider = leaf.GetComponent<Collider>();
-        if (leafCollider != null) leafCollider.enabled = false;
+        // The leaf is shut during the flood scenario, so it must block the player even while crouching.
+        if (leafCollider != null) leafCollider.enabled = true;
         Material panelMat = MakeMaterial("Kapı İç Ahşap Panel", new Color32(91, 57, 39, 255));
         for (int panel = -1; panel <= 1; panel += 2)
         {
