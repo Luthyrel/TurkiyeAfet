@@ -24,7 +24,12 @@ public enum PrototypeAction
     SecureStormLooseItems,
     CloseStormShutters,
     ToggleStormDoor,
-    CallForStormHelp
+    ToggleTornadoDoor,
+    CallForStormHelp,
+    TornadoPreparation,
+    InspectTornadoHazard,
+    CallForTornadoHelp,
+    AssistTornadoResident
 }
 
 public sealed class PrototypeInteractable : MonoBehaviour
@@ -36,6 +41,8 @@ public sealed class PrototypeInteractable : MonoBehaviour
     [SerializeField] private bool moveObjectOnComplete;
     [SerializeField] private GameObject closedBagLid;
     [SerializeField] private GameObject openBagInterior;
+    private Collider bagMainCollider;
+    private bool disableBagMainColliderWhenOpen;
     [SerializeField] private Transform exitDoorPanel;
     [SerializeField] private Transform floodSwitchLever;
     [SerializeField] private Renderer floodSwitchIndicator;
@@ -43,36 +50,55 @@ public sealed class PrototypeInteractable : MonoBehaviour
     private Transform stormDoorPivot;
     private Collider stormDoorCollider;
     private bool stormDoorOpen;
+    private Transform tornadoDoorPivot;
+    private Collider tornadoDoorCollider;
+    private bool tornadoDoorOpen;
     private Transform[] stormShutterSlats;
     private Vector3[] stormShutterClosedPositions;
 
     private Renderer[] renderers;
     private Color[] originalColors;
     private bool guidanceActive;
+    private bool preserveAuthoredColors;
     private bool visualMetricsCached;
+    private bool carryTransformCached;
+    private Transform originalCarryParent;
+    private Vector3 originalCarryLocalPosition;
+    private Vector3 originalCarryLocalScale;
+    private Quaternion originalCarryLocalRotation;
     private Vector3 originalVisualBoundsSize;
     private Vector3 originalVisualCenterOffset;
     private Vector3 heldGripAxis = Vector3.right;
     private Vector3 heldGripDirection = Vector3.up;
     private Vector3 heldGripFaceAxis = Vector3.back;
+
     private Vector3 floodPhoneRestPosition;
     private Quaternion floodPhoneRestRotation;
     private Coroutine floodPhoneMotion;
+    private bool keepTornadoPhoneOnCradle;
 
     public PrototypeAction Action => action;
     public string ActionName => actionName;
     public Vector3 HeldGripAxis => heldGripAxis;
     public Vector3 HeldGripDirection => heldGripDirection;
     public Vector3 HeldGripFaceAxis => heldGripFaceAxis;
+
     public string TargetDisplayName => action == PrototypeAction.CollectBagItem ? actionName : gameObject.name;
     public bool IsComplete { get; private set; }
     public bool IsStormDoorOpen => stormDoorOpen;
+    public bool IsTornadoDoorOpen => tornadoDoorOpen;
     public Transform BagContentsRoot => openBagInterior != null ? openBagInterior.transform : transform;
 
     public void Configure(PrototypeAction newAction, string newActionName)
     {
         action = newAction;
         actionName = newActionName;
+    }
+
+    public void SetActionName(string newActionName)
+    {
+        if (!string.IsNullOrWhiteSpace(newActionName))
+            actionName = newActionName;
     }
 
     public void ConfigureHeldGrip(Vector3 localGripAxis, Vector3 palmDirection, Vector3 localFaceAxis)
@@ -106,6 +132,38 @@ public sealed class PrototypeInteractable : MonoBehaviour
         stormDoorOpen = initiallyOpen;
         actionName = stormDoorOpen ? "E ile kapıyı kapat" : "E ile kapıyı aç";
         ApplyStormDoorState();
+    }
+
+    public void ConfigureTornadoDoor(Transform pivot, Collider doorCollider, bool initiallyOpen)
+    {
+        tornadoDoorPivot = pivot;
+        tornadoDoorCollider = doorCollider;
+        tornadoDoorOpen = initiallyOpen;
+        UpdateTornadoDoorActionName();
+        ApplyTornadoDoorState();
+    }
+
+    public bool ToggleTornadoDoor()
+    {
+        if (tornadoDoorPivot == null)
+            return tornadoDoorOpen;
+        tornadoDoorOpen = !tornadoDoorOpen;
+        UpdateTornadoDoorActionName();
+        ApplyTornadoDoorState();
+        return tornadoDoorOpen;
+    }
+
+    private void UpdateTornadoDoorActionName()
+    {
+        actionName = tornadoDoorOpen ? "E ile kapıyı kapat" : "E ile kapıyı aç";
+    }
+
+    private void ApplyTornadoDoorState()
+    {
+        if (tornadoDoorPivot != null)
+            tornadoDoorPivot.localRotation = Quaternion.Euler(0f, tornadoDoorOpen ? 90f : 0f, 0f);
+        if (tornadoDoorCollider != null)
+            tornadoDoorCollider.enabled = true;
     }
 
     public void ConfigureStormShutter(Transform[] slats, Vector3[] closedLocalPositions)
@@ -149,9 +207,15 @@ public sealed class PrototypeInteractable : MonoBehaviour
         }
     }
 
+    public void ConfigureTornadoPhoneVisual(Transform handset)
+    {
+        ConfigureFloodPhoneVisual(handset);
+        keepTornadoPhoneOnCradle = true;
+    }
+
     public void SetFloodPhoneRaised(bool raised)
     {
-        if (floodPhoneHandset == null)
+        if (floodPhoneHandset == null || keepTornadoPhoneOnCradle)
             return;
 
         if (floodPhoneMotion != null)
@@ -196,10 +260,12 @@ public sealed class PrototypeInteractable : MonoBehaviour
         IsComplete = true;
     }
 
-    public void ConfigureBagVisual(GameObject closedLid, GameObject openInterior)
+    public void ConfigureBagVisual(GameObject closedLid, GameObject openInterior, bool disableRootColliderWhenOpen = false)
     {
         closedBagLid = closedLid;
         openBagInterior = openInterior;
+        disableBagMainColliderWhenOpen = disableRootColliderWhenOpen;
+        bagMainCollider = GetComponent<Collider>();
         SetBagOpenVisual(false);
     }
 
@@ -209,6 +275,10 @@ public sealed class PrototypeInteractable : MonoBehaviour
             closedBagLid.SetActive(!isOpen);
         if (openBagInterior != null)
             openBagInterior.SetActive(isOpen);
+        // The closed bag shell otherwise intercepts the camera ray before it can reach
+        // supplies stored inside. A visible latch remains clickable while the bag is open.
+        if (disableBagMainColliderWhenOpen && bagMainCollider != null)
+            bagMainCollider.enabled = !isOpen;
     }
 
     public void SetHeld(bool held)
@@ -220,6 +290,28 @@ public sealed class PrototypeInteractable : MonoBehaviour
             if (colliders[i] != null)
                 colliders[i].enabled = !held;
         }
+    }
+
+    public void CacheCarryTransform()
+    {
+        if (carryTransformCached)
+            return;
+
+        originalCarryParent = transform.parent;
+        originalCarryLocalPosition = transform.localPosition;
+        originalCarryLocalRotation = transform.localRotation;
+        originalCarryLocalScale = transform.localScale;
+        carryTransformCached = true;
+    }
+
+    public void RestoreFromCarry(Vector3 worldPosition, Quaternion worldRotation)
+    {
+        CacheCarryTransform();
+        transform.SetParent(originalCarryParent, true);
+        transform.position = worldPosition;
+        transform.rotation = worldRotation;
+        transform.localScale = originalCarryLocalScale;
+        SetHeld(false);
     }
 
     public Vector3 OriginalVisualCenterOffset
@@ -297,6 +389,12 @@ public sealed class PrototypeInteractable : MonoBehaviour
 
     public void SetGuidance(bool active)
     {
+        if (preserveAuthoredColors)
+        {
+            if (guidanceActive)
+                RestoreAuthoredColors();
+            return;
+        }
         if (guidanceActive == active || IsComplete)
             return;
 
@@ -324,6 +422,29 @@ public sealed class PrototypeInteractable : MonoBehaviour
                 if (material.HasProperty("_EmissionColor"))
                     material.SetColor("_EmissionColor", Color.black);
             }
+        }
+    }
+
+    public void PreserveAuthoredColors()
+    {
+        preserveAuthoredColors = true;
+        RestoreAuthoredColors();
+    }
+
+    private void RestoreAuthoredColors()
+    {
+        CacheRenderers();
+        guidanceActive = false;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null)
+                continue;
+
+            Material material = renderer.material;
+            SetMaterialColor(material, originalColors[i]);
+            if (material.HasProperty("_EmissionColor"))
+                material.SetColor("_EmissionColor", Color.black);
         }
     }
 
@@ -361,7 +482,8 @@ public sealed class PrototypeInteractable : MonoBehaviour
             || action == PrototypeAction.CallForFloodHelp
             || action == PrototypeAction.CallForWildfireHelp
             || action == PrototypeAction.WaitForFloodAllClear;
-        if (action != PrototypeAction.OpenExitDoor && action != PrototypeAction.PrepareDisasterBag && !floodAction)
+        if (!preserveAuthoredColors && action != PrototypeAction.OpenExitDoor
+            && action != PrototypeAction.PrepareDisasterBag && !floodAction)
         {
             for (int i = 0; i < renderers.Length; i++)
             {
@@ -415,7 +537,9 @@ public sealed class PrototypeInteractable : MonoBehaviour
         for (int i = 0; i < renderers.Length; i++)
         {
             if (renderers[i] != null)
+            {
                 originalColors[i] = renderers[i].material.color;
+            }
         }
     }
 

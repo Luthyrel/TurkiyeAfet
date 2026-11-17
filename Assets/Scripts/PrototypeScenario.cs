@@ -5,8 +5,8 @@ using UnityEngine.InputSystem;
 
 public sealed class PrototypeScenario : MonoBehaviour
 {
-    public enum Phase { Preparation, Shaking, Landslide, Flooding, Wildfire, Storm, Blackout, Trapped, Aftershock, Completed }
-    private enum FloodDialogueMode { None, EmergencyCall, OfficialBulletin, WildfireCall, StormCall }
+    public enum Phase { Preparation, Shaking, Landslide, Flooding, Wildfire, Storm, Tornado, Blackout, Trapped, Aftershock, Completed }
+    private enum FloodDialogueMode { None, EmergencyCall, OfficialBulletin, WildfireCall, StormCall, TornadoCall }
 
     private const float QuakeDuration = 10f;
     private const float RequiredHoldDuration = 5f;
@@ -66,6 +66,10 @@ public sealed class PrototypeScenario : MonoBehaviour
     private readonly List<PrototypeInteractable> wildfirePreparationTasks = new List<PrototypeInteractable>();
     private readonly List<PrototypeInteractable> stormPreparationTasks = new List<PrototypeInteractable>();
     private readonly List<PrototypeInteractable> stormAfterTasks = new List<PrototypeInteractable>();
+    private readonly List<PrototypeInteractable> tornadoPreparationTasks = new List<PrototypeInteractable>();
+    private readonly List<PrototypeInteractable> tornadoAfterTasks = new List<PrototypeInteractable>();
+    private readonly List<PrototypeInteractable> tornadoGardenItems = new List<PrototypeInteractable>();
+    private readonly List<PrototypeInteractable> tornadoEmergencySupplies = new List<PrototypeInteractable>();
     private readonly List<Rigidbody> looseObjects = new List<Rigidbody>();
     private readonly Dictionary<Rigidbody, PrototypeInteractable> furniture = new Dictionary<Rigidbody, PrototypeInteractable>();
 
@@ -139,6 +143,34 @@ public sealed class PrototypeScenario : MonoBehaviour
     private int stormCallCorrectChoice;
     private int stormShuffledStep = -1;
     private string[] stormShuffledOptions;
+    private bool tornadoScenario;
+    private Vector3 tornadoShelterCenter;
+    private int tornadoPreparationIndex;
+    private int tornadoAfterIndex;
+    private bool tornadoHazardObserved;
+    private float tornadoTimer;
+    private float tornadoShelterHold;
+    private bool tornadoSheltered;
+    private bool tornadoShelterAwarded;
+    private PrototypeInteractable tornadoGardenStorage;
+    private PrototypeInteractable tornadoEmergencyBag;
+    private PrototypeInteractable tornadoSafeRoomTask;
+    private PrototypeInteractable tornadoSafeRoomDoor;
+    private PrototypeInteractable tornadoFirstAidKit;
+    private PrototypeInteractable tornadoHeldGardenItem;
+    private bool tornadoEmergencyBagOpen;
+    private int tornadoGardenStoredCount;
+    private int tornadoSupplyPackedCount;
+    private float tornadoSafeRoomPreparationHold;
+    private bool tornadoResidentAssessed;
+    private bool tornadoMedicalKitRetrieved;
+    private bool tornadoDepartureStarted;
+    private float tornadoDepartureTimer;
+    private Vector3 tornadoHazardPosition = new Vector3(8f, 0f, 1f);
+    private const float TornadoDuration = 12f;
+    private const float TornadoDepartureDuration = 4.8f;
+    private const float TornadoShelterRequired = 3f;
+    private const float TornadoSafeRoomPreparationRequired = 3f;
 
     public Phase CurrentPhase { get; private set; } = Phase.Preparation;
     public bool IsShaking => CurrentPhase == Phase.Shaking;
@@ -146,6 +178,7 @@ public sealed class PrototypeScenario : MonoBehaviour
     public bool IsLandslideScenario => landslideScenario;
     public bool IsWildfireScenario => wildfireScenario;
     public bool IsStormScenario => stormScenario;
+    public bool IsTornadoScenario => tornadoScenario;
     public bool IsLandslideActive => landslideScenario && CurrentPhase == Phase.Landslide;
     public bool IsLandslideEvacuated => landslideEvacuated;
     public Vector3 LandslideSafePosition => landslideSafeCenter;
@@ -165,6 +198,7 @@ public sealed class PrototypeScenario : MonoBehaviour
     public int TrappedQuestionCount => TrappedQuestions.Length;
     public bool IsPostQuake => CurrentPhase == Phase.Aftershock;
     public bool IsDisasterBagOpen => disasterBagOpen;
+    public bool IsTornadoEmergencyBagOpen => tornadoEmergencyBagOpen;
     public bool HasItemInHand => heldBagItem != null;
     public int BaggedItemCount => baggedItemCount;
     public bool IsBagTaskSkipped => bagTaskSkipped;
@@ -229,6 +263,14 @@ public sealed class PrototypeScenario : MonoBehaviour
                     return stormAfterTasks[0];
                 return null;
             }
+            if (tornadoScenario)
+            {
+                if (CurrentPhase == Phase.Preparation)
+                    return GetTornadoPreparationTarget();
+                if (CurrentPhase == Phase.Aftershock)
+                    return GetTornadoAftershockTarget();
+                return null;
+            }
             if (floodScenario)
             {
                 if (CurrentPhase == Phase.Preparation)
@@ -288,6 +330,160 @@ public sealed class PrototypeScenario : MonoBehaviour
         stormScenario = true;
         stormShelterCenter = shelterCenter;
         CurrentPhase = Phase.Preparation;
+    }
+
+    public void ConfigureTornado(Vector3 shelterCenter)
+    {
+        tornadoScenario = true;
+        tornadoShelterCenter = shelterCenter;
+        CurrentPhase = Phase.Preparation;
+    }
+
+    public void ConfigureTornadoHazard(Vector3 hazardPosition)
+    {
+        tornadoHazardPosition = hazardPosition;
+    }
+
+    public void ConfigureTornadoTaskStations(PrototypeInteractable gardenStorage,
+        PrototypeInteractable emergencyBag, PrototypeInteractable safeRoom,
+        PrototypeInteractable safeRoomDoor,
+        PrototypeInteractable firstAidKit)
+    {
+        tornadoGardenStorage = gardenStorage;
+        tornadoEmergencyBag = emergencyBag;
+        tornadoSafeRoomTask = safeRoom;
+        tornadoSafeRoomDoor = safeRoomDoor;
+        tornadoFirstAidKit = firstAidKit;
+        tornadoGardenStorage?.PreserveAuthoredColors();
+        tornadoEmergencyBag?.PreserveAuthoredColors();
+        tornadoSafeRoomTask?.PreserveAuthoredColors();
+        tornadoSafeRoomDoor?.PreserveAuthoredColors();
+        tornadoFirstAidKit?.PreserveAuthoredColors();
+        tornadoGardenStorage?.SetActionName("Bahçedeki 3 eşyayı güvene al (0/3)");
+        tornadoEmergencyBag?.SetActionName("Acil durum çantasını hazırla (0/3)");
+    }
+
+    public void AddTornadoGardenItem(PrototypeInteractable item)
+    {
+        item?.PreserveAuthoredColors();
+        if (item != null && !tornadoGardenItems.Contains(item))
+            tornadoGardenItems.Add(item);
+    }
+
+    public void AddTornadoEmergencySupply(PrototypeInteractable item)
+    {
+        item?.PreserveAuthoredColors();
+        if (item != null && !tornadoEmergencySupplies.Contains(item))
+            tornadoEmergencySupplies.Add(item);
+    }
+
+    private PrototypeInteractable GetTornadoPreparationTarget()
+    {
+        if (tornadoPreparationIndex >= tornadoPreparationTasks.Count)
+            return null;
+
+        if (tornadoPreparationIndex == 0)
+            return tornadoHeldGardenItem != null ? tornadoGardenStorage : GetFirstIncomplete(tornadoGardenItems);
+
+        if (tornadoPreparationIndex == 1)
+        {
+            if (heldBagItem != null)
+                return tornadoEmergencyBag;
+            if (!tornadoEmergencyBagOpen)
+                return tornadoEmergencyBag;
+            PrototypeInteractable supply = GetFirstIncomplete(tornadoEmergencySupplies);
+            return supply != null ? supply : tornadoEmergencyBag;
+        }
+
+        if (tornadoPreparationIndex == 2)
+        {
+            if (!IsPlayerInTornadoShelter())
+                return tornadoSafeRoomDoor;
+            if (tornadoSafeRoomDoor != null && tornadoSafeRoomDoor.IsTornadoDoorOpen)
+                return tornadoSafeRoomDoor;
+            return tornadoSafeRoomTask;
+        }
+
+        return null;
+    }
+
+    private PrototypeInteractable GetTornadoAftershockTarget()
+    {
+        if (tornadoAfterIndex >= tornadoAfterTasks.Count)
+            return null;
+        if (tornadoAfterIndex == 0 && tornadoHazardObserved && tornadoAfterTasks.Count > 1)
+            return tornadoAfterTasks[1];
+        if (tornadoAfterIndex < 2)
+            return tornadoAfterTasks[tornadoAfterIndex];
+        if (!tornadoResidentAssessed)
+            return tornadoAfterTasks[2];
+        if (heldBagItem == tornadoFirstAidKit)
+            return tornadoAfterTasks[2];
+        if (!tornadoMedicalKitRetrieved)
+            return tornadoEmergencyBagOpen ? tornadoFirstAidKit : tornadoEmergencyBag;
+        return tornadoAfterTasks[2];
+    }
+
+    private static PrototypeInteractable GetFirstIncomplete(List<PrototypeInteractable> targets)
+    {
+        for (int i = 0; i < targets.Count; i++)
+            if (targets[i] != null && !targets[i].IsComplete)
+                return targets[i];
+        return null;
+    }
+
+    public string GetTornadoInteractionPrompt(PrototypeInteractable target)
+    {
+        if (!tornadoScenario || target == null)
+            return null;
+        if (target.Action == PrototypeAction.ToggleTornadoDoor)
+            return "Kapı  •  [E / Sol tık] " + target.ActionName;
+        if (target == CurrentPreparationTarget)
+        {
+            if (target == tornadoEmergencyBag)
+            {
+                if (CurrentPhase == Phase.Preparation && heldBagItem != null)
+                    return "Taşınıyor: " + heldBagItem.TargetDisplayName
+                        + "  •  Ön cebe veya iç tabana nişan al, [E] ile yerleştir";
+                if (CurrentPhase == Phase.Preparation && tornadoEmergencyBagOpen
+                    && tornadoSupplyPackedCount >= tornadoEmergencySupplies.Count)
+                    return "Acil durum çantası  •  [E / Sol tık] Kapat ve hazırla";
+                if (CurrentPhase == Phase.Aftershock && tornadoEmergencyBagOpen)
+                    return "Acil durum çantası  •  İlk yardım setini al";
+                return "Acil durum çantası  •  [E / Sol tık] "
+                    + (tornadoEmergencyBagOpen ? "Açık" : "Aç");
+            }
+            if (target.Action == PrototypeAction.CollectBagItem)
+                return heldBagItem != null
+                    ? "Taşınıyor: " + heldBagItem.TargetDisplayName + "  •  Çantaya dönüp [E] ile yerleştir"
+                    : target.TargetDisplayName + "  •  [E / Sol tık] Al";
+            if (target == tornadoSafeRoomTask)
+                return "Penceresiz güvenli oda  •  İçeride kal ve kapıyı kapat";
+            if (tornadoGardenItems.Contains(target))
+                return target.TargetDisplayName + "  •  [E / Sol tık] Taşımak için al";
+            if (target == tornadoGardenStorage)
+                return "Alt raf  •  Boş bölüme nişan al, [E / Sol tık] Eşyayı bırak";
+            if (CurrentPhase == Phase.Aftershock && target.Action == PrototypeAction.AssistTornadoResident)
+                return tornadoResidentAssessed
+                    ? heldBagItem == tornadoFirstAidKit
+                        ? "Yaralı komşu  •  [E / Sol tık] İlk yardımı uygula"
+                        : "Yaralı komşu  •  İlk yardım setini getir"
+                    : "Yaralı komşu  •  [E / Sol tık] Durumunu kontrol et";
+            return target.TargetDisplayName + "  •  [E / Sol tık] " + target.ActionName;
+        }
+        return null;
+    }
+
+    public void AddTornadoPreparationTask(PrototypeInteractable task)
+    {
+        task?.PreserveAuthoredColors();
+        if (task != null && !tornadoPreparationTasks.Contains(task)) tornadoPreparationTasks.Add(task);
+    }
+
+    public void AddTornadoAfterTask(PrototypeInteractable task)
+    {
+        task?.PreserveAuthoredColors();
+        if (task != null && !tornadoAfterTasks.Contains(task)) tornadoAfterTasks.Add(task);
     }
 
     public void ConfigureStormDoor(PrototypeInteractable door)
@@ -389,6 +585,11 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (stormScenario)
         {
             TryInteractStorm(target);
+            return;
+        }
+        if (tornadoScenario)
+        {
+            TryInteractTornado(target);
             return;
         }
 
@@ -629,6 +830,416 @@ public sealed class PrototypeScenario : MonoBehaviour
             BeginStormEmergencyCall(target);
         }
         RefreshHud();
+    }
+
+    private void TryInteractTornado(PrototypeInteractable target)
+    {
+        if (target == null)
+        {
+            PrototypeInteractable active = CurrentPreparationTarget;
+            bootstrap.ShowNotice(active != null
+                ? "Etkileşim için " + active.TargetDisplayName + " nesnesine yaklaş ve nişan al."
+                : "Burada etkileşilebilir bir hortum görevi yok.");
+            return;
+        }
+
+        if (target.Action == PrototypeAction.ToggleTornadoDoor)
+        {
+            bool isRefugeDoor = target == tornadoSafeRoomDoor;
+            if (CurrentPhase == Phase.Tornado && !target.IsTornadoDoorOpen && !isRefugeDoor)
+            {
+                bootstrap.ShowNotice("Hortum sürüyor. Kapıyı açma; penceresiz güvenli odada kal ve resmî uyarıyı bekle.");
+                return;
+            }
+            bool opened = target.ToggleTornadoDoor();
+            PrototypeAudio.PlayDoorOpen();
+            bootstrap.ShowNotice(opened ? isRefugeDoor && CurrentPhase == Phase.Tornado
+                    ? "Güvenli oda kapısı açıldı. İçeri yürü ve kapıyı hemen kapat."
+                    : "Kapı açıldı. Eşiği yürüyerek geç; içeri girdikten sonra kapat."
+                : "Kapı kapandı.");
+            RefreshHud();
+            return;
+        }
+
+        if (CurrentPhase == Phase.Tornado)
+        {
+            bootstrap.ShowNotice("Hortum geçiyor. Penceresiz güvenli odadan çıkma; dışarıdaki etkileşimler güvenli uyarısından sonra açılır.");
+            return;
+        }
+
+        if (CurrentPhase == Phase.Preparation)
+        {
+            TryInteractTornadoPreparation(target);
+            return;
+        }
+
+        if (CurrentPhase != Phase.Aftershock)
+        {
+            bootstrap.ShowNotice("Bu hortum etkileşimi şu anda kullanılamıyor.");
+            return;
+        }
+
+        PrototypeInteractable expected = CurrentPreparationTarget;
+        if (target != expected)
+        {
+            bootstrap.ShowNotice(expected != null
+                ? "Önce aktif hedefe yürü: " + expected.TargetDisplayName + "."
+                : "Hortum sonrası görevler tamamlandı.");
+            return;
+        }
+
+        if (target.Action == PrototypeAction.InspectTornadoHazard)
+        {
+            float targetDistance = Vector3.Distance(FlatPosition(player.transform.position), FlatPosition(target.transform.position));
+            float wireDistance = Vector3.Distance(FlatPosition(player.transform.position), FlatPosition(tornadoHazardPosition));
+            if (targetDistance > 2.35f)
+            {
+                bootstrap.ShowNotice("Sarı elektrik tehlikesi levhasına yaklaş; kablolara değil, güvenli bildirim noktasına etkileş.");
+                return;
+            }
+            if (wireDistance < 3.1f)
+            {
+                bootstrap.ShowNotice("Kopmuş kablolara yaklaşma. Güvenli mesafedeki sarı bildirim levhasına dön.");
+                return;
+            }
+            tornadoHazardObserved = true;
+            PrototypeAudio.PlayUiSelect();
+            bootstrap.ShowNotice("Kopmuş hattı güvenli mesafeden fark ettin. Hatta yaklaşma; güvenli odadaki telefondan 112'ye bildir.");
+            RefreshHud();
+            return;
+        }
+
+        if (target.Action == PrototypeAction.CallForTornadoHelp)
+        {
+            if (!IsPlayerInTornadoShelter())
+            {
+                bootstrap.ShowNotice("112 aramasını penceresiz güvenli odadaki sabit telefondan yap. Kopmuş hatta yaklaşma.");
+                return;
+            }
+            if (Vector3.Distance(player.transform.position, target.transform.position) > 2.2f)
+            {
+                bootstrap.ShowNotice("Güvenli odadaki duvar telefonuna yaklaş ve ahizeyi kaldır.");
+                return;
+            }
+            BeginTornadoEmergencyCall(target);
+            return;
+        }
+
+        if (target.Action == PrototypeAction.AssistTornadoResident)
+        {
+            if (Vector3.Distance(player.transform.position, target.transform.position) > 2.2f)
+            {
+                bootstrap.ShowNotice("Yardım etmeden önce çevreyi kontrol edip yaralı komşuya güvenli biçimde yaklaş.");
+                return;
+            }
+            if (!tornadoResidentAssessed)
+            {
+                tornadoResidentAssessed = true;
+                bootstrap.ShowNotice("Komşun bilinci açık; ayak bileği incinmiş. Onu çekip kaldırma. Evdeki acil çantadan ilk yardım setini alıp buraya getir.");
+                RefreshHud();
+                return;
+            }
+            if (!tornadoMedicalKitRetrieved || heldBagItem != tornadoFirstAidKit)
+            {
+                bootstrap.ShowNotice("İlk yardım seti yanında değil. Güvenli odadaki acil çantadan alıp komşunun yanına yürü.");
+                return;
+            }
+
+            Vector3 kitPosition = target.transform.position + target.transform.right * 0.62f + Vector3.up * 0.02f;
+            player.ReleaseBagItem(tornadoFirstAidKit, kitPosition, Quaternion.Euler(0f, player.transform.eulerAngles.y, 0f));
+            heldBagItem = null;
+            tornadoFirstAidKit.CompleteAction();
+            target.CompleteAction();
+            tornadoAfterIndex++;
+            Score += 100;
+            PrototypeAudio.PlayTaskComplete();
+            bootstrap.ShowNotice("Komşunun bileğini ilk yardım setiyle sabitledin. Bilincini ve nefesini izleyip ekipleri bekle. +100 puan.");
+            RefreshHud();
+            if (tornadoAfterIndex >= tornadoAfterTasks.Count)
+                FinishScenario();
+            return;
+        }
+
+        if (target == tornadoEmergencyBag && !tornadoMedicalKitRetrieved && tornadoResidentAssessed)
+        {
+            if (!tornadoEmergencyBagOpen)
+            {
+                tornadoEmergencyBagOpen = true;
+                target.SetBagOpenVisual(true);
+                tornadoFirstAidKit?.SetHeld(false);
+                PrototypeAudio.PlayBagOpen();
+                bootstrap.ShowNotice("Çantayı açtın. İlk yardım setini al; su ve fener çantada kalsın.");
+                RefreshHud();
+            }
+            return;
+        }
+
+        if (target == tornadoFirstAidKit && tornadoResidentAssessed && tornadoEmergencyBagOpen)
+        {
+            if (heldBagItem != null)
+            {
+                bootstrap.ShowNotice("Taşıdığın eşyayı önce güvenli bir yere bırak.");
+                return;
+            }
+            heldBagItem = tornadoFirstAidKit;
+            tornadoMedicalKitRetrieved = true;
+            player.HoldBagItem(tornadoFirstAidKit);
+            PrototypeAudio.PlayItemPickup();
+                bootstrap.ShowNotice("İlk yardım setini taşıyorsun. Yaralı komşuya yürüyerek dön ve yaralanmasını destekle.");
+            RefreshHud();
+        }
+    }
+
+    private void TryInteractTornadoPreparation(PrototypeInteractable target)
+    {
+        PrototypeInteractable expected = CurrentPreparationTarget;
+        if (expected == null || target != expected)
+        {
+            if (target == null && expected == tornadoGardenStorage && tornadoHeldGardenItem != null)
+            {
+                bootstrap.ShowNotice("Eşyayı alt rafın boş bir bölümüne doğrult ve E veya sol tıka bas.");
+                return;
+            }
+            if (target == null && expected == tornadoEmergencyBag && heldBagItem != null)
+            {
+                bootstrap.ShowNotice("Açık çantanın ön cebine veya boş iç tabanına doğrult ve E veya sol tıka bas.");
+                return;
+            }
+            bootstrap.ShowNotice(expected != null
+                ? "Önce aktif hortum hazırlık adımına yürü: " + expected.TargetDisplayName + "."
+                : "Hortum hazırlığı tamamlandı; penceresiz odaya geç.");
+            return;
+        }
+
+        if (tornadoPreparationIndex == 0)
+        {
+            if (target == tornadoGardenStorage)
+            {
+                if (tornadoHeldGardenItem == null || heldBagItem != tornadoHeldGardenItem)
+                {
+                    bootstrap.ShowNotice("Güvenli eşya köşesine bırakmadan önce bahçedeki sandalyeyi, masayı veya saksıyı eline al.");
+                    return;
+                }
+                Vector3[] storageSlots =
+                {
+                    // The shortened rack sits in the entrance room; keep one item centered
+                    // on each of its three shelf sections.
+                    new Vector3(-11.17f, 0.17f, -3.95f),
+                    new Vector3(-11.17f, 0.17f, -2.80f),
+                    new Vector3(-11.17f, 0.17f, -1.65f)
+                };
+                int slot = Mathf.Clamp(tornadoGardenStoredCount, 0, storageSlots.Length - 1);
+                float storageYaw = tornadoHeldGardenItem == tornadoGardenItems[0] ? 270f
+                    : tornadoHeldGardenItem == tornadoGardenItems[1] ? 90f : 0f;
+                player.ReleaseBagItem(tornadoHeldGardenItem, storageSlots[slot], Quaternion.Euler(0f, storageYaw, 0f));
+                tornadoHeldGardenItem.CompleteAction();
+                tornadoGardenStoredCount++;
+                tornadoGardenStorage.SetActionName("Bahçedeki 3 eşyayı güvene al (" + tornadoGardenStoredCount + "/3)");
+                heldBagItem = null;
+                tornadoHeldGardenItem = null;
+                Score += 20;
+                PrototypeAudio.PlayBagStore();
+                if (tornadoGardenStoredCount >= tornadoGardenItems.Count)
+                {
+                    tornadoGardenStorage.CompleteAction();
+                    tornadoPreparationIndex++;
+                    PrototypeAudio.PlayTaskComplete();
+                    bootstrap.ShowNotice("Bahçedeki üç hafif eşyayı güvenli iç köşeye taşıdın. +60 puan.");
+                }
+                else
+                    bootstrap.ShowNotice("Eşya güvenli köşeye bırakıldı. " + tornadoGardenStoredCount + "/" + tornadoGardenItems.Count + ". Sıradaki eşyayı bahçeden al.");
+                RefreshHud();
+                return;
+            }
+
+            if (tornadoGardenItems.Contains(target) && !target.IsComplete && heldBagItem == null)
+            {
+                tornadoHeldGardenItem = target;
+                heldBagItem = target;
+                bool useLowerRightSlot = target == tornadoGardenItems[0] || target == tornadoGardenItems[1];
+                player.HoldBagItem(target, useLowerRightSlot);
+                PrototypeAudio.PlayItemPickup();
+                bootstrap.ShowNotice(target.TargetDisplayName + " taşınıyor. Evin açık kapısından geçerek güvenli eşya köşesine götür.");
+                RefreshHud();
+                return;
+            }
+        }
+
+        if (tornadoPreparationIndex == 1)
+        {
+            if (target == tornadoEmergencyBag)
+            {
+                if (heldBagItem != null)
+                {
+                    if (!tornadoEmergencySupplies.Contains(heldBagItem))
+                    {
+                        bootstrap.ShowNotice("Bahçe eşyasını önce güvenli eşya köşesine bırak.");
+                        return;
+                    }
+                    if (!tornadoEmergencyBagOpen)
+                    {
+                        tornadoEmergencyBagOpen = true;
+                        target.SetBagOpenVisual(true);
+                        PrototypeAudio.PlayBagOpen();
+                        bootstrap.ShowNotice("Çantayı açtın. Eşyayı iç tabana yerleştirmek için tekrar etkileş.");
+                        RefreshHud();
+                        return;
+                    }
+                    Vector3[] bagSlots =
+                    {
+                        // The open-bag tray sits at local Y=0.35; set each item's base on that tray.
+                        new Vector3(-0.22f, 0.39f, -0.06f),
+                        new Vector3(0f, 0.39f, 0.02f),
+                        new Vector3(0.22f, 0.39f, 0.08f)
+                    };
+                    int slot = Mathf.Clamp(tornadoSupplyPackedCount, 0, bagSlots.Length - 1);
+                    player.ReleaseBagItem(heldBagItem);
+                    heldBagItem.PackBagItem(tornadoEmergencyBag.BagContentsRoot, bagSlots[slot], 0.14f);
+                    tornadoSupplyPackedCount++;
+                    tornadoEmergencyBag.SetActionName("Acil durum çantasını hazırla (" + tornadoSupplyPackedCount + "/3)");
+                    heldBagItem = null;
+                    PrototypeAudio.PlayBagStore();
+                    bootstrap.ShowNotice(tornadoSupplyPackedCount >= tornadoEmergencySupplies.Count
+                        ? "Su, fener ve ilk yardım seti çantada. E ile çantayı kapatıp hazırlığı tamamla."
+                        : "Gerekli malzeme çantaya kondu. " + tornadoSupplyPackedCount + "/" + tornadoEmergencySupplies.Count + ". Sıradaki malzemeyi al.");
+                    RefreshHud();
+                    return;
+                }
+
+                if (!tornadoEmergencyBagOpen)
+                {
+                    tornadoEmergencyBagOpen = true;
+                    target.SetBagOpenVisual(true);
+                    PrototypeAudio.PlayBagOpen();
+                    bootstrap.ShowNotice("Çantayı açtın. Tezgâhtaki suyu, feneri ve ilk yardım setini teker teker içine yerleştir.");
+                }
+                else if (tornadoSupplyPackedCount >= tornadoEmergencySupplies.Count)
+                {
+                    tornadoEmergencyBagOpen = false;
+                    target.SetBagOpenVisual(false);
+                    target.CompleteAction();
+                    tornadoPreparationIndex++;
+                    Score += 60;
+                    PrototypeAudio.PlayBagClose();
+                    PrototypeAudio.PlayTaskComplete();
+                    bootstrap.ShowNotice("Acil durum çantası hazır ve kapalı. +60 puan.");
+                    if (PreparationComplete()) StartPreparationCountdown();
+                }
+                else
+                    bootstrap.ShowNotice("Çantada " + tornadoSupplyPackedCount + "/" + tornadoEmergencySupplies.Count + " malzeme var. Eksikleri tezgâhtan al.");
+                RefreshHud();
+                return;
+            }
+
+            if (tornadoEmergencySupplies.Contains(target) && tornadoEmergencyBagOpen
+                && !target.IsComplete && heldBagItem == null)
+            {
+                heldBagItem = target;
+                player.HoldBagItem(target);
+                PrototypeAudio.PlayItemPickup();
+                bootstrap.ShowNotice(target.TargetDisplayName + " taşınıyor. Acil durum çantasına dönüp içine koy.");
+                RefreshHud();
+                return;
+            }
+        }
+
+        if (tornadoPreparationIndex == 2 && target == tornadoSafeRoomTask)
+        {
+            bootstrap.ShowNotice("Penceresiz arka odaya yürüyerek gir, kapıyı kapat ve görev tamamlanana kadar içeride kal.");
+            return;
+        }
+
+        bootstrap.ShowNotice("Bu nesne şu an hortum hazırlığı için kullanılmıyor.");
+    }
+
+    private static Vector3 FlatPosition(Vector3 position)
+    {
+        position.y = 0f;
+        return position;
+    }
+
+    private void BeginTornadoEmergencyCall(PrototypeInteractable target)
+    {
+        if (floodDialogueMode != FloodDialogueMode.None)
+            return;
+        floodDialogueTarget = target;
+        floodDialogueMode = FloodDialogueMode.TornadoCall;
+        floodDialogueStep = 0;
+        stormShuffledStep = -1;
+        stormShuffledOptions = null;
+        target.SetFloodPhoneRaised(true);
+        bootstrap.SetPlayerControls(false);
+        PrototypeAudio.PlayPhoneRing();
+        bootstrap.ShowNotice("112 Acil Çağrı Merkezi aranıyor...");
+        StartCoroutine(ConnectTornadoEmergencyCall());
+    }
+
+    private IEnumerator ConnectTornadoEmergencyCall()
+    {
+        yield return new WaitForSecondsRealtime(1.1f);
+        PrototypeAudio.PlayPhoneConnect();
+        ShowTornadoCallStep(string.Empty);
+    }
+
+    private void ShowTornadoCallStep(string feedback)
+    {
+        string province = ProvinceManager.Instance != null && ProvinceManager.Instance.SelectedProvince != null
+            ? ProvinceManager.Instance.SelectedProvince.name : "seçilen il";
+        if (floodDialogueStep == 0)
+        {
+            PresentTornadoCallOptions(new[]
+            {
+                province + ", simülasyondaki mahalledeyim; evin arka iç bölümündeyim. Konumumu haritadaki işaret ve sokak bilgisiyle tarif ediyorum.",
+                province + " tarafındayım ama sokağı bilmiyorum; adresi bulmak için dışarı çıkıp tabelalara bakacağım.",
+                "Önce hortumun nereden geçtiğini uzun uzun anlatayım, konumu sonra tarif ederim."
+            }, 0, feedback);
+        }
+        else if (floodDialogueStep == 1)
+        {
+            PresentTornadoCallOptions(new[]
+            {
+                "Devrilmiş direk ve kopmuş elektrik hattı var; konumunu bildiriyorum, hattan uzak duruyorum.",
+                "Kablo yerde ama kıvılcım görmüyorum; elektrik kesilmiş olabilir, yakından bakacağım.",
+                "Yolu açmak için direği ve kabloyu kendim kenara çekeceğim."
+            }, 0, feedback);
+        }
+        else
+        {
+            PresentTornadoCallOptions(new[]
+            {
+                "Yardım bekleyen bir kişi gördüm. Konumunu ve durumunu bildirip ekiplerin yönlendirmesini bekleyeceğim.",
+                "Kişiyi hemen ayağa kaldırıp hasarlı yapının yanından geçireceğim.",
+                "Önce çevredeki enkazı kaldırıp yolu tek başıma açacağım."
+            }, 0, feedback);
+        }
+    }
+
+    private void PresentTornadoCallOptions(string[] options, int correctIndex, string feedback)
+    {
+        if (stormShuffledOptions == null || stormShuffledStep != floodDialogueStep)
+        {
+            List<string> shuffled = new List<string>(options);
+            int correctOption = correctIndex;
+            for (int i = shuffled.Count - 1; i > 0; i--)
+            {
+                int swapIndex = UnityEngine.Random.Range(0, i + 1);
+                string temp = shuffled[i];
+                shuffled[i] = shuffled[swapIndex];
+                shuffled[swapIndex] = temp;
+                if (correctOption == i) correctOption = swapIndex;
+                else if (correctOption == swapIndex) correctOption = i;
+            }
+            stormShuffledStep = floodDialogueStep;
+            stormShuffledOptions = shuffled.ToArray();
+            stormCallCorrectChoice = correctOption;
+        }
+
+        string question = floodDialogueStep == 0
+            ? "Operatör: Hangi il ve mahalledesiniz? Güvenli bir yerde misiniz?"
+            : floodDialogueStep == 1
+                ? "Operatör: Çevrede hangi acil tehlike var? Hatta dokundunuz mu?"
+                : "Operatör: Yardım bekleyen kişi nerede ve sonrasında ne yapacaksınız?";
+        bootstrap.ShowFloodDialogue("112 ACİL ÇAĞRI MERKEZİ", question, stormShuffledOptions, feedback);
     }
 
     private void BeginStormEmergencyCall(PrototypeInteractable target)
@@ -1034,7 +1645,7 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         int correctChoice = floodDialogueMode == FloodDialogueMode.WildfireCall
             ? wildfireCorrectChoice
-            : floodDialogueMode == FloodDialogueMode.StormCall
+            : floodDialogueMode == FloodDialogueMode.StormCall || floodDialogueMode == FloodDialogueMode.TornadoCall
             ? stormCallCorrectChoice
             : floodDialogueMode == FloodDialogueMode.OfficialBulletin
             ? 1
@@ -1049,6 +1660,8 @@ public sealed class PrototypeScenario : MonoBehaviour
             PrototypeAudio.PlayAnswerWrong();
             string feedback = floodDialogueMode == FloodDialogueMode.WildfireCall
                 ? "Operatör: Yaklaşmayın. Konumu ve gördüğünüz bilgileri net biçimde aktarın; güvenli yerde kalın."
+                : floodDialogueMode == FloodDialogueMode.TornadoCall
+                ? "Operatör: Hasarlı yapıya ve kopmuş hatta yaklaşmayın. Konumu, tehlikeyi ve yardım bekleyen kişiyi güvenli yerden bildirin."
                 : floodDialogueMode == FloodDialogueMode.StormCall
                 ? "Operatör: Kopmuş hatta ve fırtına hasarına yaklaşmayın. Bildiğiniz konumu ve doğrulayabildiğiniz bilgileri güvenli yerden aktarın."
                 : floodDialogueMode == FloodDialogueMode.EmergencyCall
@@ -1060,6 +1673,8 @@ public sealed class PrototypeScenario : MonoBehaviour
                 ShowWildfireCallStep(feedback);
             else if (floodDialogueMode == FloodDialogueMode.StormCall)
                 ShowStormCallStep(feedback);
+            else if (floodDialogueMode == FloodDialogueMode.TornadoCall)
+                ShowTornadoCallStep(feedback);
             else
                 bootstrap.ShowFloodDialogue("RESMÎ TAŞKIN BİLGİLENDİRMESİ",
                     "Su seviyesi düştü; ancak dere yatağına, su basmış yola veya hasarlı binaya yaklaşmayın. Yetkililerin talimatlarını bekleyin.",
@@ -1074,7 +1689,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         PrototypeAudio.PlayAnswerCorrect();
         if ((floodDialogueMode == FloodDialogueMode.EmergencyCall
                 || floodDialogueMode == FloodDialogueMode.WildfireCall
-                || floodDialogueMode == FloodDialogueMode.StormCall)
+                || floodDialogueMode == FloodDialogueMode.StormCall
+                || floodDialogueMode == FloodDialogueMode.TornadoCall)
             && floodDialogueStep < 2)
         {
             floodDialogueStep++;
@@ -1082,6 +1698,8 @@ public sealed class PrototypeScenario : MonoBehaviour
                 ShowWildfireCallStep(string.Empty);
             else if (floodDialogueMode == FloodDialogueMode.StormCall)
                 ShowStormCallStep(string.Empty);
+            else if (floodDialogueMode == FloodDialogueMode.TornadoCall)
+                ShowTornadoCallStep(string.Empty);
             else
                 ShowFloodCallStep(string.Empty);
             return;
@@ -1091,7 +1709,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         FloodDialogueMode completedMode = floodDialogueMode;
         if (completedMode == FloodDialogueMode.EmergencyCall
             || completedMode == FloodDialogueMode.WildfireCall
-            || completedMode == FloodDialogueMode.StormCall)
+            || completedMode == FloodDialogueMode.StormCall
+            || completedMode == FloodDialogueMode.TornadoCall)
             completedTarget.SetFloodPhoneRaised(false);
         floodDialogueMode = FloodDialogueMode.None;
         floodDialogueTarget = null;
@@ -1114,6 +1733,21 @@ public sealed class PrototypeScenario : MonoBehaviour
             PrototypeAudio.PlayTaskComplete();
             bootstrap.ShowNotice("Kopmuş elektrik hattını ve konumunu 112'ye bildirdin. Hatta yaklaşmadan içeride kal ve resmî talimatları bekle. +120 puan.");
             FinishScenario();
+        }
+        else if (completedMode == FloodDialogueMode.TornadoCall)
+        {
+            if (tornadoHazardObserved && tornadoAfterTasks.Count > 0 && tornadoAfterIndex == 0)
+            {
+                tornadoAfterTasks[0].CompleteAction();
+                tornadoAfterIndex = 1;
+                Score += 75;
+            }
+            completedTarget.CompleteAction();
+            tornadoAfterIndex = Mathf.Max(tornadoAfterIndex + 1, 2);
+            Score += 120;
+            PrototypeAudio.PlayTaskComplete();
+            bootstrap.ShowNotice("Konumunu, kopmuş hattı ve yardım bekleyen kişiyi 112'ye bildirdin. Hattan uzak kal ve ekiplerin yönlendirmesini bekle. +195 puan.");
+            RefreshHud();
         }
         else
             CompleteFloodAfterTask(completedTarget,
@@ -1239,9 +1873,11 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         preparationCountdownStarted = true;
         preparationCountdownRemaining = PreparationCountdownDuration;
-        lastFloodCountdownDisplayed = floodScenario || landslideScenario || wildfireScenario || stormScenario
+        lastFloodCountdownDisplayed = floodScenario || landslideScenario || wildfireScenario || stormScenario || tornadoScenario
             ? Mathf.CeilToInt(preparationCountdownRemaining) : -1;
-        bootstrap.ShowNotice(stormScenario
+        bootstrap.ShowNotice(tornadoScenario
+            ? "Hortum uyarısı verildi! Güvenli odada kalmaya hazır ol; hortum 5 saniye içinde yaklaşacak."
+            : stormScenario
             ? "Fırtına uyarısı başladı. Dışarıdaki eşyaları güvene al ve panjurları kapat; 5 saniye içinde fırtına başlayacak."
             : wildfireScenario
             ? "İhbar alındı. Tahliye tatbikatı 5 saniye içinde başlayacak."
@@ -1266,6 +1902,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (stormScenario)
             return stormPreparationTasks.Count > 0
                 && stormPreparationIndex >= stormPreparationTasks.Count;
+        if (tornadoScenario)
+            return tornadoPreparationTasks.Count > 0 && tornadoPreparationIndex >= tornadoPreparationTasks.Count;
 
         if (preparationTasks.Count == 0)
             return false;
@@ -1288,6 +1926,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (stormScenario)
             return stormPreparationTasks.Count > 0
                 && stormPreparationIndex >= stormPreparationTasks.Count;
+        if (tornadoScenario)
+            return CorePreparationTasksComplete();
         if (floodScenario)
             return floodPreparationTasks.Count > 0 && floodPreparationIndex >= floodPreparationTasks.Count;
         return CorePreparationTasksComplete()
@@ -1323,6 +1963,11 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (stormScenario)
         {
             StartStorm();
+            return;
+        }
+        if (tornadoScenario)
+        {
+            StartTornado();
             return;
         }
 
@@ -1407,6 +2052,119 @@ public sealed class PrototypeScenario : MonoBehaviour
         bootstrap.SetStormDoorExposureVisual(stormDoor != null && stormDoor.IsStormDoorOpen);
         bootstrap.ShowNotice("Fırtına başladı! Ağaçlardan, pencerelerden ve direklerden uzaklaş. En yakın sağlam binanın penceresiz iç bölümüne gir ve fırtına boyunca dışarı çıkma.");
         RefreshHud();
+    }
+
+    private void StartTornado()
+    {
+        CurrentPhase = Phase.Tornado;
+        preparationCountdownStarted = false;
+        preparationCountdownRemaining = 0f;
+        tornadoTimer = 0f;
+        tornadoHazardObserved = false;
+        tornadoDepartureTimer = 0f;
+        tornadoDepartureStarted = false;
+        tornadoShelterHold = 0f;
+        tornadoSheltered = false;
+        tornadoShelterAwarded = false;
+        foreach (PrototypeInteractable task in tornadoPreparationTasks)
+            if (task != null) task.SetGuidance(false);
+        GameManager.Instance?.StartScenario();
+        bootstrap.BeginTornadoVisual();
+        PrototypeAudio.SetTornadoWind(0f);
+        bootstrap.ShowNotice("HORTUM UYARISI – GÜVENLİ ALANA GEÇİN! Hortum mahalle yolunu geçecek. Pencerelerden uzak iç bölüme gir, başını koru ve resmî güvenli uyarısına kadar çıkma.");
+        RefreshHud();
+    }
+
+    private void UpdateTornado()
+    {
+        if (CurrentPhase != Phase.Tornado) return;
+        tornadoTimer += Time.deltaTime;
+        bool insideRoom = IsPlayerInTornadoShelter();
+        bool doorClosed = tornadoSafeRoomDoor == null || !tornadoSafeRoomDoor.IsTornadoDoorOpen;
+        bool inside = insideRoom && doorClosed;
+        float windProgress = Mathf.Clamp01(tornadoTimer / TornadoDuration);
+        float windStrength = tornadoTimer < TornadoDuration
+            ? Mathf.Lerp(0.12f, 1f, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(tornadoTimer / 4.5f)))
+            : Mathf.Lerp(1f, 0f, Mathf.Clamp01(tornadoDepartureTimer / TornadoDepartureDuration));
+        PrototypeAudio.SetTornadoWind(windStrength * (inside ? 0.38f : 1f));
+
+        if (!tornadoDepartureStarted)
+            bootstrap.UpdateTornadoVisual(tornadoTimer, TornadoDuration);
+        else
+        {
+            tornadoDepartureTimer += Time.deltaTime;
+            bootstrap.UpdateTornadoDeparture(tornadoDepartureTimer, TornadoDepartureDuration);
+        }
+
+        if (inside)
+        {
+            tornadoShelterHold += Time.deltaTime;
+            if (!tornadoShelterAwarded && tornadoShelterHold >= TornadoShelterRequired)
+            {
+                tornadoSheltered = true;
+                tornadoShelterAwarded = true;
+                Score += 150;
+                PrototypeAudio.PlayTaskComplete();
+                bootstrap.ShowNotice("Güvenli odada korunuyorsun. Hortum geçene ve resmî uyarı gelene kadar içeride kal. +150 puan.");
+            }
+        }
+        else
+        {
+            tornadoShelterHold = 0f;
+            tornadoSheltered = false;
+            // Wind can push the player toward the room only while outside its walls.
+            // An open door still blocks the shelter award, but should not move someone
+            // who has already reached the protected room interior.
+            if (!insideRoom && !tornadoShelterAwarded && player != null)
+            {
+                Vector3 toward = (tornadoShelterCenter - player.transform.position).normalized;
+                player.ApplyStormWind(toward * Time.deltaTime * Mathf.Lerp(0.28f, 1.15f, windProgress));
+                player.SetShake(Mathf.Lerp(0.004f, 0.016f, windProgress));
+            }
+        }
+
+        if (!tornadoDepartureStarted && tornadoTimer >= TornadoDuration)
+        {
+            if (!tornadoShelterAwarded || !inside)
+            {
+                FailTornadoScenario("Hortum geçene kadar güvenli iç bölümde kalınamadı.");
+                return;
+            }
+            tornadoDepartureStarted = true;
+            tornadoDepartureTimer = 0f;
+            bootstrap.BeginTornadoDeparture();
+            bootstrap.ShowNotice("Hortum mahalle yolundan uzaklaşıyor. Güvenli odada kal; ortam sakinleşene kadar çıkma.");
+            RefreshHud();
+        }
+
+        if (tornadoDepartureStarted && tornadoDepartureTimer >= TornadoDepartureDuration)
+        {
+            if (!tornadoShelterAwarded || !inside)
+            {
+                FailTornadoScenario("Resmî güvenli uyarısından önce güvenli odadan çıkıldı.");
+                return;
+            }
+            player?.SetShake(0f);
+            PrototypeAudio.SetTornadoWind(0f);
+            CurrentPhase = Phase.Aftershock;
+            bootstrap.EndTornadoVisual();
+            Score += 25;
+            bootstrap.ShowNotice("HORTUM GEÇTİ — resmî güvenli uyarısı verildi. Dışarı çıkmadan önce çevre tehlikelerini kontrol et.");
+            RefreshHud();
+            return;
+        }
+        if (Time.frameCount % 8 == 0) RefreshHud();
+    }
+
+    private void FailTornadoScenario(string reason)
+    {
+        if (CurrentPhase == Phase.Completed) return;
+        CurrentPhase = Phase.Completed;
+        PrototypeAudio.SetTornadoWind(0f);
+        bootstrap.EndTornadoVisual();
+        player?.SetShake(0f);
+        GameManager.Instance?.ShowResults();
+        bootstrap.ShowResults(Score, "Hortum tatbikatı başarısız oldu. " + reason + " Uyarı sırasında penceresiz iç odaya sığın ve hortum geçene kadar orada kal.", "HORTUMDA GÜVENLİ ALANA SIĞINILAMADI");
     }
 
     private void UpdateStorm()
@@ -1503,6 +2261,50 @@ public sealed class PrototypeScenario : MonoBehaviour
             return false;
         Vector3 offset = player.transform.position - stormShelterCenter;
         return Mathf.Abs(offset.x) <= 3.65f && Mathf.Abs(offset.z) <= 3.65f;
+    }
+
+    private bool IsPlayerInTornadoShelter()
+    {
+        if (player == null)
+            return false;
+        Vector3 offset = player.transform.position - tornadoShelterCenter;
+        return Mathf.Abs(offset.x) <= 3.80f && Mathf.Abs(offset.z) <= 2.00f
+            && player.transform.position.y > -0.2f && player.transform.position.y < 2.2f;
+    }
+
+    private void UpdateTornadoSafeRoomPreparation()
+    {
+        if (tornadoPreparationIndex != 2 || tornadoSafeRoomTask == null)
+        {
+            tornadoSafeRoomPreparationHold = 0f;
+            return;
+        }
+
+        bool inside = IsPlayerInTornadoShelter();
+        bool doorClosed = tornadoSafeRoomDoor == null || !tornadoSafeRoomDoor.IsTornadoDoorOpen;
+        if (!inside || !doorClosed)
+        {
+            tornadoSafeRoomPreparationHold = 0f;
+            return;
+        }
+
+        tornadoSafeRoomPreparationHold += Time.deltaTime;
+        if (tornadoSafeRoomPreparationHold < TornadoSafeRoomPreparationRequired)
+        {
+            if (Time.frameCount % 10 == 0)
+                RefreshHud();
+            return;
+        }
+
+        tornadoSafeRoomTask.CompleteAction();
+        tornadoPreparationIndex++;
+        tornadoSafeRoomPreparationHold = 0f;
+        Score += 60;
+        PrototypeAudio.PlayTaskComplete();
+        bootstrap.ShowNotice("Penceresiz güvenli odada kaldın ve kapıyı kapattın. Hazırlık tamamlandı. +60 puan.");
+        if (PreparationComplete())
+            StartPreparationCountdown();
+        RefreshHud();
     }
 
     private bool IsPlayerInsideStormHouse()
@@ -1691,16 +2493,21 @@ public sealed class PrototypeScenario : MonoBehaviour
 
     private void Update()
     {
+        if (tornadoScenario && CurrentPhase == Phase.Preparation && !preparationCountdownStarted)
+            UpdateTornadoSafeRoomPreparation();
+
         if (CurrentPhase == Phase.Preparation && preparationCountdownStarted)
         {
             preparationCountdownRemaining = Mathf.Max(0f, preparationCountdownRemaining - Time.deltaTime);
-            if (floodScenario || landslideScenario || wildfireScenario || stormScenario)
+            if (floodScenario || landslideScenario || wildfireScenario || stormScenario || tornadoScenario)
             {
                 int displayedCountdown = Mathf.CeilToInt(preparationCountdownRemaining);
                 if (displayedCountdown > 0 && displayedCountdown != lastFloodCountdownDisplayed)
                 {
                     lastFloodCountdownDisplayed = displayedCountdown;
-                    bootstrap.ShowNotice(stormScenario
+                    bootstrap.ShowNotice(tornadoScenario
+                        ? "Hortum " + displayedCountdown + " saniye içinde yaklaşacak. Eşyaları güvene alıp penceresiz odaya geç."
+                        : stormScenario
                         ? "Fırtına " + displayedCountdown + " saniye içinde başlayacak. Sağlam binanın iç odasına sığınmaya hazır ol."
                         : wildfireScenario
                         ? "Tahliye tatbikatı " + displayedCountdown + " saniye içinde başlayacak."
@@ -1741,6 +2548,12 @@ public sealed class PrototypeScenario : MonoBehaviour
         if (stormScenario)
         {
             UpdateStorm();
+            return;
+        }
+
+        if (tornadoScenario)
+        {
+            UpdateTornado();
             return;
         }
 
@@ -2092,7 +2905,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         ProvinceInfo province = ProvinceManager.Instance != null ? ProvinceManager.Instance.SelectedProvince : null;
         int plateCode = province != null ? province.plateCode : 6;
         string disasterKey = "TurkiyeAfet." + ProvinceManager.GetDisasterSaveName(
-            stormScenario ? GameManager.DisasterType.Storm
+            tornadoScenario ? GameManager.DisasterType.Tornado
+                : stormScenario ? GameManager.DisasterType.Storm
                 : wildfireScenario ? GameManager.DisasterType.Wildfire
                 : landslideScenario ? GameManager.DisasterType.Landslide
                 : floodScenario ? GameManager.DisasterType.Flood : GameManager.DisasterType.Earthquake);
@@ -2105,7 +2919,7 @@ public sealed class PrototypeScenario : MonoBehaviour
         PlayerPrefs.SetInt(bestScoreKey, Mathf.Max(Score, PlayerPrefs.GetInt(bestScoreKey, 0)));
         PlayerPrefs.SetInt("TurkiyeAfet.LastProvince", plateCode);
         PlayerPrefs.SetInt("TurkiyeAfet.LastCompletedProvince", plateCode);
-        if (!floodScenario && !landslideScenario && !wildfireScenario && !stormScenario && plateCode == 6)
+        if (!floodScenario && !landslideScenario && !wildfireScenario && !stormScenario && !tornadoScenario && plateCode == 6)
         {
             // Keep the save keys from the first Ankara-only prototype readable.
             PlayerPrefs.SetInt("TurkiyeAfet.Deprem.LastScore", Score);
@@ -2115,7 +2929,14 @@ public sealed class PrototypeScenario : MonoBehaviour
 
         GameManager.Instance?.ShowResults();
         string review;
-        if (stormScenario)
+        if (tornadoScenario)
+        {
+            review = (province != null ? province.name + "  •  PLAKA " + province.PlateLabel + ". " : "")
+                + "Hortum öncesi " + tornadoPreparationIndex + "/" + tornadoPreparationTasks.Count + " hazırlık adımı tamamlandı. "
+                + (tornadoShelterAwarded ? "Hortum sırasında pencerelerden uzak arka iç bölümde kaldın. " : "Güvenli iç bölüme sığınamadın. ")
+                + "Hortum sonrası tehlikeleri kontrol edip yardım çağrısını ve güvenli yardım adımlarını tamamladın.";
+        }
+        else if (stormScenario)
         {
             review = (province != null ? province.name + "  •  PLAKA " + province.PlateLabel + ". " : "")
                 + "Fırtına öncesi: " + stormPreparationIndex + "/" + stormPreparationTasks.Count + " hazırlık adımı. "
@@ -2172,6 +2993,60 @@ public sealed class PrototypeScenario : MonoBehaviour
     {
         if (bootstrap == null)
             return;
+
+        if (tornadoScenario)
+        {
+            PrototypeInteractable prepTarget = CurrentPhase == Phase.Preparation ? CurrentPreparationTarget : null;
+            PrototypeInteractable afterTarget = CurrentPhase == Phase.Aftershock ? CurrentPreparationTarget : null;
+            // Keep task targets in their authored colors (chair blue, table wood, hazard sign yellow).
+            // The universal guidance tint replaced every material on multi-part props with turquoise.
+            if (prepTarget != null) prepTarget.SetGuidance(false);
+            if (afterTarget != null) afterTarget.SetGuidance(false);
+            for (int i = 0; i < tornadoEmergencySupplies.Count; i++)
+                tornadoEmergencySupplies[i]?.SetGuidance(false);
+            for (int i = 0; i < tornadoGardenItems.Count; i++)
+                tornadoGardenItems[i]?.SetGuidance(false);
+            string phase = CurrentPhase switch
+            {
+                Phase.Preparation => "HORTUM ÖNCESİ HAZIRLIK",
+                Phase.Tornado => tornadoDepartureStarted
+                    ? "HORTUM UZAKLAŞIYOR  •  " + Mathf.CeilToInt(Mathf.Max(0f, TornadoDepartureDuration - tornadoDepartureTimer)) + " sn"
+                    : "HORTUM ANI  •  " + Mathf.CeilToInt(Mathf.Max(0f, TornadoDuration - tornadoTimer)) + " sn",
+                Phase.Aftershock => "HORTUM SONRASI GÜVENLİK KONTROLÜ",
+                _ => "TATBİKAT TAMAMLANDI"
+            };
+            string tornadoTasksUi = CurrentPhase switch
+            {
+                Phase.Preparation => "HORTUM ÖNCESİ HAZIRLIK\nİlk yardım setini ve acil çantayı hazır alana taşı; bahçe sandalyesi ve masasını içeri al.\n"
+                    + AppendTornadoTaskLines(tornadoPreparationTasks, tornadoPreparationIndex),
+                Phase.Tornado => "HORTUM UYARISI – GÜVENLİ ALANA GEÇİN!\nPencerelerden uzak arka iç bölüme sığın, başını ve boynunu koru. Hortum geçip resmî güvenli uyarısı gelene kadar içeride kal."
+                    + (tornadoSheltered ? "\n✓ Güvenli odadasın; dışarı çıkma." : "\n○ Güvenli odaya geç ve içeride kal."),
+                Phase.Aftershock => "HORTUM SONRASI\nKopmuş elektrik hattına, hasarlı yapılara ve devrilen ağaçlara yaklaşma. Tehlikeleri uzaktan kontrol et; güvenli noktadan 112'yi ara ve yardım bekleyen kişiyi ekiplerin yönlendirmesiyle destekle.\n"
+                    + AppendTornadoTaskLines(tornadoAfterTasks,
+                        tornadoHazardObserved && tornadoAfterIndex == 0 ? 1 : tornadoAfterIndex,
+                        tornadoHazardObserved && tornadoAfterIndex == 0 ? 0 : -1),
+                _ => "Hortum tatbikatı tamamlandı."
+            };
+            if (heldBagItem != null)
+                tornadoTasksUi += "\n\nTAŞINIYOR: " + heldBagItem.TargetDisplayName;
+            if (CurrentPhase == Phase.Preparation && tornadoPreparationIndex == 2)
+            {
+                bool inside = IsPlayerInTornadoShelter();
+                bool doorClosed = tornadoSafeRoomDoor == null || !tornadoSafeRoomDoor.IsTornadoDoorOpen;
+                if (!inside)
+                    tornadoTasksUi += "\n\nGüvenli odaya yürü.";
+                else if (!doorClosed)
+                    tornadoTasksUi += "\n\nKapıyı kapat ve içeride kal.";
+                else
+                    tornadoTasksUi += "\n\nKapı kapalı; içeride kal: "
+                        + Mathf.CeilToInt(Mathf.Max(0f, TornadoSafeRoomPreparationRequired - tornadoSafeRoomPreparationHold)) + " sn";
+            }
+            bootstrap.RefreshHud(phase, tornadoTasksUi,
+                tornadoSheltered ? "✓ Pencerelerden uzak iç bölümde kal" : "○ Pencerelerden uzak arka iç bölüme sığın",
+                "", "", CurrentPhase == Phase.Aftershock ? "○ Tehlikeleri bildir ve güvenli şekilde yardım et" : "○ Resmî güvenli uyarısını bekle",
+                Score, 0f);
+            return;
+        }
 
         if (stormScenario)
         {
@@ -2349,6 +3224,22 @@ public sealed class PrototypeScenario : MonoBehaviour
             _ => "TATBİKAT TAMAMLANDI"
         };
         bootstrap.RefreshHud(phaseText, tasks, shelter, valve, windows, exit, Score, HoldProgress);
+    }
+
+    private static string AppendTornadoTaskLines(List<PrototypeInteractable> tasks, int activeIndex, int observedIndex = -1)
+    {
+        string result = string.Empty;
+        for (int i = 0; i < tasks.Count; i++)
+        {
+            PrototypeInteractable task = tasks[i];
+            if (task == null) continue;
+            bool active = i == activeIndex;
+            task.SetGuidance(false);
+            if (result.Length > 0) result += "\n";
+            result += active ? "<color=#5ED7C4>▶ AKTİF: " + task.ActionName + "</color>"
+                : (task.IsComplete ? "✓ " : i == observedIndex ? "◉ " : "○ ") + task.ActionName;
+        }
+        return result;
     }
 
     private void AppendLandslideTasks(ref string text, List<PrototypeInteractable> tasks, int activeIndex)

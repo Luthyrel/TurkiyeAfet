@@ -7,8 +7,11 @@ public sealed class PrototypeAudio : MonoBehaviour
     private AudioSource effectsSource;
     private AudioSource movementSource;
     private AudioSource stormRainSource;
+    private AudioSource tornadoWindSource;
     private AudioClip stormRainLoop;
+    private AudioClip tornadoWindLoop;
     private float stormRainTargetVolume;
+    private float tornadoWindTargetVolume;
 
     private AudioClip footsteps;
     private AudioClip softSteps;
@@ -56,6 +59,14 @@ public sealed class PrototypeAudio : MonoBehaviour
         stormRainSource.volume = 0f;
         stormRainSource.dopplerLevel = 0f;
 
+        tornadoWindSource = gameObject.AddComponent<AudioSource>();
+        tornadoWindSource.playOnAwake = false;
+        tornadoWindSource.spatialBlend = 0f;
+        tornadoWindSource.loop = true;
+        tornadoWindSource.volume = 0f;
+        tornadoWindSource.dopplerLevel = 0f;
+        tornadoWindSource.priority = 80;
+
         footsteps = Load("Footsteps");
         // Crouching reuses the same indoor recording at a slower, quieter pace.
         softSteps = Load("Footsteps");
@@ -77,6 +88,8 @@ public sealed class PrototypeAudio : MonoBehaviour
         floodCallConnect = CreatePhoneConnectClip();
         stormRainLoop = Resources.Load<AudioClip>("Audio/StormRain");
         stormRainSource.clip = stormRainLoop;
+        tornadoWindLoop = CreateTornadoWindLoop();
+        tornadoWindSource.clip = tornadoWindLoop;
 
     }
 
@@ -88,12 +101,25 @@ public sealed class PrototypeAudio : MonoBehaviour
 
     private void Update()
     {
-        if (stormRainSource == null) return;
-        float transitionSpeed = stormRainTargetVolume < stormRainSource.volume ? 1.8f : 0.8f;
-        stormRainSource.volume = Mathf.MoveTowards(stormRainSource.volume, stormRainTargetVolume,
-            Time.unscaledDeltaTime * transitionSpeed);
-        if (stormRainTargetVolume <= 0f && stormRainSource.volume <= 0.001f && stormRainSource.isPlaying)
-            stormRainSource.Stop();
+        if (stormRainSource != null)
+        {
+            float transitionSpeed = stormRainTargetVolume < stormRainSource.volume ? 1.8f : 0.8f;
+            stormRainSource.volume = Mathf.MoveTowards(stormRainSource.volume, stormRainTargetVolume,
+                Time.unscaledDeltaTime * transitionSpeed);
+            if (stormRainTargetVolume <= 0f && stormRainSource.volume <= 0.001f && stormRainSource.isPlaying)
+                stormRainSource.Stop();
+        }
+
+        if (tornadoWindSource != null)
+        {
+            float transitionSpeed = tornadoWindTargetVolume < tornadoWindSource.volume
+                ? Mathf.Max(0.025f, tornadoWindTargetVolume * 0.25f)
+                : 0.13f;
+            tornadoWindSource.volume = Mathf.MoveTowards(tornadoWindSource.volume, tornadoWindTargetVolume,
+                Time.unscaledDeltaTime * transitionSpeed);
+            if (tornadoWindTargetVolume <= 0f && tornadoWindSource.volume <= 0.001f && tornadoWindSource.isPlaying)
+                tornadoWindSource.Stop();
+        }
     }
 
     public static void SetStormRain(bool playing, bool doorOpen)
@@ -113,6 +139,26 @@ public sealed class PrototypeAudio : MonoBehaviour
         else
         {
             Instance.stormRainTargetVolume = 0f;
+        }
+    }
+
+    public static void SetTornadoWind(float intensity)
+    {
+        if (Instance == null || Instance.tornadoWindSource == null)
+            return;
+
+        if (intensity > 0.001f)
+        {
+            if (!Instance.tornadoWindSource.isPlaying)
+            {
+                Instance.tornadoWindSource.volume = 0f;
+                Instance.tornadoWindSource.Play();
+            }
+            Instance.tornadoWindTargetVolume = Mathf.Clamp01(intensity) * 0.42f;
+        }
+        else
+        {
+            Instance.tornadoWindTargetVolume = 0f;
         }
     }
 
@@ -157,6 +203,39 @@ public sealed class PrototypeAudio : MonoBehaviour
             samples[i] = Mathf.Sin(2f * Mathf.PI * 425f * time) * Mathf.Clamp01(edge) * 0.18f;
         }
         AudioClip clip = AudioClip.Create("Simüle Telefon Bağlantı Sesi", sampleCount, 1, sampleRate, false);
+        clip.SetData(samples, 0);
+        return clip;
+    }
+
+    private AudioClip CreateTornadoWindLoop()
+    {
+        const int sampleRate = 22050;
+        const int durationSeconds = 4;
+        const int noiseNodeCount = 176;
+        int sampleCount = sampleRate * durationSeconds;
+        float[] noiseNodes = new float[noiseNodeCount + 1];
+        System.Random random = new System.Random(20261117);
+        for (int i = 0; i < noiseNodeCount; i++)
+            noiseNodes[i] = (float)(random.NextDouble() * 2.0 - 1.0);
+        noiseNodes[noiseNodeCount] = noiseNodes[0];
+
+        float[] samples = new float[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float t = i / (float)sampleRate;
+            float nodePosition = t / durationSeconds * noiseNodeCount;
+            int node = Mathf.FloorToInt(nodePosition);
+            float blend = nodePosition - node;
+            float noise = Mathf.Lerp(noiseNodes[node], noiseNodes[node + 1], blend);
+            float gust = 0.72f + 0.20f * Mathf.Sin(2f * Mathf.PI * 0.5f * t)
+                + 0.08f * Mathf.Sin(2f * Mathf.PI * 0.75f * t + 0.8f);
+            float lowRumble = Mathf.Sin(2f * Mathf.PI * 48f * t) * 0.31f
+                + Mathf.Sin(2f * Mathf.PI * 73f * t) * 0.16f
+                + Mathf.Sin(2f * Mathf.PI * 111f * t) * 0.08f;
+            samples[i] = Mathf.Clamp((noise * 0.42f + lowRumble) * gust, -0.9f, 0.9f);
+        }
+
+        AudioClip clip = AudioClip.Create("Hortumun Alçak Frekanslı Rüzgâr Döngüsü", sampleCount, 1, sampleRate, false);
         clip.SetData(samples, 0);
         return clip;
     }

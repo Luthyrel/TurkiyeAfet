@@ -22,6 +22,7 @@ public sealed class PrototypePlayerController : MonoBehaviour
     private Transform characterVisual;
     private Renderer[] characterRenderers;
     private Transform firstPersonItemAnchor;
+    private Transform firstPersonLargeCarryAnchor;
     private GameObject firstPersonHandVisual;
     private Transform firstPersonWristBone;
     private Transform firstPersonIndexRoot;
@@ -31,6 +32,9 @@ public sealed class PrototypePlayerController : MonoBehaviour
     private Transform rightHandBone;
     private Transform rightLowerArmBone;
     private PrototypeInteractable heldBagItem;
+    private bool heldItemInLowerRightSlot;
+    private bool heldGardenChairLocalCarryRotationCached;
+    private Quaternion heldGardenChairLocalCarryRotation;
     private float cameraYaw;
     private float cameraPitch = 12f;
     private float cameraHeight;
@@ -114,23 +118,42 @@ public sealed class PrototypePlayerController : MonoBehaviour
 
     public Vector3 CameraPosition => playerCamera != null ? playerCamera.transform.position : transform.position;
 
-    public void HoldBagItem(PrototypeInteractable item)
+    public void HoldBagItem(PrototypeInteractable item, bool useLowerRightSlot = false)
     {
         if (item == null)
             return;
 
+        item.CacheCarryTransform();
         item.CacheOriginalVisualSize();
         item.SetHeld(true);
         heldBagItem = item;
+        heldItemInLowerRightSlot = useLowerRightSlot;
+        heldGardenChairLocalCarryRotationCached = false;
+        if (item.ActionName.IndexOf("Bahçe sandalyesi", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            Quaternion chairGrip = GetGripAxisCorrection(item.HeldGripAxis, item.HeldGripDirection, item.HeldGripFaceAxis);
+            heldGardenChairLocalCarryRotation = chairGrip * Quaternion.Euler(0f, 0f, 25f);
+            heldGardenChairLocalCarryRotationCached = true;
+        }
         UpdateHeldItemPresentation(true);
     }
 
     public void ReleaseBagItem(PrototypeInteractable item)
     {
+        if (item == null)
+            return;
+        ReleaseBagItem(item, item.transform.position, item.transform.rotation);
+    }
+
+    public void ReleaseBagItem(PrototypeInteractable item, Vector3 worldPosition, Quaternion worldRotation)
+    {
         if (heldBagItem != item)
             return;
 
         heldBagItem = null;
+        heldItemInLowerRightSlot = false;
+        heldGardenChairLocalCarryRotationCached = false;
+        item.RestoreFromCarry(worldPosition, worldRotation);
         if (firstPersonHandVisual != null)
             firstPersonHandVisual.SetActive(false);
     }
@@ -435,6 +458,12 @@ public sealed class PrototypePlayerController : MonoBehaviour
         firstPersonItemAnchor.SetParent(playerCamera.transform, false);
         firstPersonItemAnchor.localPosition = new Vector3(0.72f, -0.42f, 0.69f);
 
+        GameObject largeCarryAnchor = new GameObject("Birinci Şahıs Büyük Eşya Görünümü");
+        firstPersonLargeCarryAnchor = largeCarryAnchor.transform;
+        firstPersonLargeCarryAnchor.SetParent(playerCamera.transform, false);
+        firstPersonLargeCarryAnchor.localPosition = new Vector3(0.55f, -0.39f, 0.90f);
+        firstPersonLargeCarryAnchor.localRotation = Quaternion.identity;
+
         GameObject armPrefab = Resources.Load<GameObject>("WRADRightArm");
         if (armPrefab == null)
         {
@@ -596,6 +625,111 @@ public sealed class PrototypePlayerController : MonoBehaviour
             return;
 
         bool thirdPerson = crouched || holdingTable;
+        if (heldItemInLowerRightSlot)
+        {
+            if (thirdPerson && rightHandBone != null)
+            {
+                if (heldBagItem.transform.parent != null || forceReparent)
+                    heldBagItem.transform.SetParent(null, true);
+                if (firstPersonHandVisual != null && firstPersonHandVisual.activeSelf)
+                    firstPersonHandVisual.SetActive(false);
+
+                float thirdPersonLargeOriginalSize = heldBagItem.CacheOriginalVisualSize();
+                Vector3 towardCamera = (playerCamera.transform.position - rightHandBone.position).normalized;
+                Quaternion facingCamera = Quaternion.LookRotation(-towardCamera, Vector3.up);
+                bool isGardenTable = heldBagItem.ActionName.IndexOf("Bahçe masası", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isGardenChair = heldBagItem.ActionName.IndexOf("Bahçe sandalyesi", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                Quaternion grip = GetGripAxisCorrection(heldBagItem.HeldGripAxis,
+                    heldBagItem.HeldGripDirection, heldBagItem.HeldGripFaceAxis);
+                float thirdPersonDisplaySize = isGardenTable
+                    ? 0.72f
+                    : 0.42f;
+                float worldScale = thirdPersonDisplaySize / thirdPersonLargeOriginalSize;
+                Quaternion characterFacing = Quaternion.LookRotation(transform.forward, Vector3.up);
+                Quaternion carryRotation;
+                if (isGardenChair)
+                {
+                    if (!heldGardenChairLocalCarryRotationCached)
+                    {
+                        heldGardenChairLocalCarryRotation = grip * Quaternion.Euler(0f, 0f, 25f);
+                        heldGardenChairLocalCarryRotationCached = true;
+                    }
+                    carryRotation = characterFacing * heldGardenChairLocalCarryRotation;
+                }
+                else if (isGardenTable)
+                    carryRotation = characterFacing * grip;
+                else
+                    carryRotation = facingCamera * Quaternion.Euler(-34f, 0f, 0f) * grip;
+                heldBagItem.transform.rotation = carryRotation;
+                heldBagItem.transform.localScale = Vector3.one * worldScale;
+
+                Vector3 forearmDirection = rightLowerArmBone != null
+                    ? rightHandBone.position - rightLowerArmBone.position
+                    : transform.forward;
+                if (forearmDirection.sqrMagnitude < 0.0001f)
+                    forearmDirection = transform.forward;
+                forearmDirection.Normalize();
+                Vector3 handCenter = isGardenTable
+                    ? rightHandBone.position + forearmDirection * 0.10f + transform.forward * 0.16f
+                        + transform.right * 0.230f - Vector3.up * 0.09f
+                    : isGardenChair
+                        ? rightHandBone.position + forearmDirection * 0.015f + transform.forward * 0.03f
+                            - transform.right * 0.05f - Vector3.up * 0.10f
+                        : rightHandBone.position + forearmDirection * 0.10f
+                            + towardCamera * 0.12f + transform.right * 0.06f;
+                if (isGardenChair)
+                {
+                    // El, ters çevrilen sandalyenin bir ayağının ucunu kavrasın.
+                    Vector3 chairFootGripPoint = new Vector3(0.22f, 0.01f, 0.20f);
+                    heldBagItem.transform.position = handCenter
+                        - carryRotation * (chairFootGripPoint * worldScale);
+                }
+                else
+                {
+                    Vector3 visualOffset = heldBagItem.transform.rotation
+                        * (heldBagItem.OriginalVisualCenterOffset * worldScale);
+                    heldBagItem.transform.position = handCenter - visualOffset;
+                }
+                return;
+            }
+
+            Transform largeItemHolder = firstPersonLargeCarryAnchor != null ? firstPersonLargeCarryAnchor : playerCamera.transform;
+            if (heldBagItem.transform.parent != largeItemHolder || forceReparent)
+                heldBagItem.transform.SetParent(largeItemHolder, false);
+
+            float largeOriginalSize = heldBagItem.CacheOriginalVisualSize();
+            float largeInheritedScale = Mathf.Max(Mathf.Abs(largeItemHolder.lossyScale.x), Mathf.Abs(largeItemHolder.lossyScale.y),
+                Mathf.Abs(largeItemHolder.lossyScale.z), 0.001f);
+            float displaySize = heldBagItem.ActionName.IndexOf("Bahçe masası", System.StringComparison.OrdinalIgnoreCase) >= 0
+                ? 0.52f
+                : 0.48f;
+            float largeLocalScale = displaySize / (largeOriginalSize * largeInheritedScale);
+            heldBagItem.transform.localScale = Vector3.one * largeLocalScale;
+            bool isFirstPersonGardenChair = heldBagItem.ActionName.IndexOf("Bahçe sandalyesi", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            if (isFirstPersonGardenChair)
+            {
+                if (!heldGardenChairLocalCarryRotationCached)
+                {
+                    Quaternion grip = GetGripAxisCorrection(heldBagItem.HeldGripAxis,
+                        heldBagItem.HeldGripDirection, heldBagItem.HeldGripFaceAxis);
+                    heldGardenChairLocalCarryRotation = grip * Quaternion.Euler(0f, 0f, 25f);
+                    heldGardenChairLocalCarryRotationCached = true;
+                }
+
+                // Birinci şahısta açıyı kamera taşıma yuvasına sabitle; WASD ile dönen
+                // karakter gövdesi sandalyenin ekrandaki açısını değiştirmesin.
+                heldBagItem.transform.localRotation = heldGardenChairLocalCarryRotation;
+            }
+            else
+            {
+                heldBagItem.transform.localRotation = Quaternion.Euler(-38f, -20f, 6f);
+            }
+            heldBagItem.transform.localPosition = -heldBagItem.OriginalVisualCenterOffset * largeLocalScale;
+            if (firstPersonHandVisual != null && firstPersonHandVisual.activeSelf)
+                firstPersonHandVisual.SetActive(false);
+            return;
+        }
+
         bool useWorldHandPosition = thirdPerson && rightHandBone != null;
         bool showFirstPersonHand = !useWorldHandPosition;
         if (firstPersonHandVisual != null && firstPersonHandVisual.activeSelf != showFirstPersonHand)
@@ -611,8 +745,10 @@ public sealed class PrototypePlayerController : MonoBehaviour
             // between imported rigs, so the item itself stays outside that scaled hierarchy.
             Vector3 towardCamera = (playerCamera.transform.position - rightHandBone.position).normalized;
             Quaternion facingCamera = Quaternion.LookRotation(-towardCamera, Vector3.up);
-            float worldScale = 0.18f / originalSize;
-            heldBagItem.transform.rotation = facingCamera;
+            float worldScale = GetFirstPersonHeldItemSize(heldBagItem.ActionName) / originalSize;
+            Quaternion worldGripCorrection = GetGripAxisCorrection(heldBagItem.HeldGripAxis,
+                heldBagItem.HeldGripDirection, heldBagItem.HeldGripFaceAxis);
+            heldBagItem.transform.rotation = facingCamera * worldGripCorrection;
             heldBagItem.transform.localScale = Vector3.one * worldScale;
             Vector3 forearmDirection = rightLowerArmBone != null
                 ? rightHandBone.position - rightLowerArmBone.position
@@ -620,9 +756,27 @@ public sealed class PrototypePlayerController : MonoBehaviour
             if (forearmDirection.sqrMagnitude < 0.0001f)
                 forearmDirection = transform.forward;
             forearmDirection.Normalize();
-            Vector3 handCenter = rightHandBone.position
-                + forearmDirection * 0.15f
-                + towardCamera * 0.035f;
+            bool isPlanter = heldBagItem.ActionName.IndexOf("Saksı", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            float handAdvance = isPlanter ? 0f : 0.19f;
+            float handSurfaceOffset = heldBagItem.ActionName.IndexOf("El feneri", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || heldBagItem.ActionName.IndexOf("İlk yardım seti", System.StringComparison.OrdinalIgnoreCase) >= 0
+                ? 0.06f
+                : 0.035f;
+            Vector3 handCenter;
+            if (isPlanter)
+            {
+                Vector3 palmDirection = Vector3.ProjectOnPlane(forearmDirection, Vector3.up);
+                if (palmDirection.sqrMagnitude < 0.0001f)
+                    palmDirection = transform.forward;
+                else
+                    palmDirection.Normalize();
+                handCenter = rightHandBone.position - transform.right * 0.035f + palmDirection * 0.04f - Vector3.up * 0.09f;
+            }
+            else
+            {
+                handCenter = rightHandBone.position
+                    + forearmDirection * handAdvance + towardCamera * handSurfaceOffset;
+            }
             Vector3 visualCenterOffset = facingCamera * (heldBagItem.OriginalVisualCenterOffset * worldScale);
             heldBagItem.transform.position = handCenter - visualCenterOffset;
             return;
@@ -647,13 +801,25 @@ public sealed class PrototypePlayerController : MonoBehaviour
             Vector3 itemBounds = heldBagItem.OriginalVisualBoundsSize;
             float itemDepth = GetGripFrameDepth(itemBounds, gripCorrection) * localScale * inheritedScale;
             float palmAdvanceRatio = 0f;
-            if (string.Equals(heldBagItem.ActionName, "Acil durum radyosu", System.StringComparison.OrdinalIgnoreCase))
+            if (heldBagItem.ActionName.IndexOf("Bahçe masası", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || heldBagItem.ActionName.IndexOf("Bahçe sandalyesi", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                palmAdvanceRatio = 0.24f;
+            else if (heldBagItem.ActionName.IndexOf("Saksı", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                palmAdvanceRatio = 0f;
+            else if (string.Equals(heldBagItem.ActionName, "Acil durum radyosu", System.StringComparison.OrdinalIgnoreCase))
                 palmAdvanceRatio = 0.25f;
             else if (string.Equals(heldBagItem.ActionName, "Cep telefonu", System.StringComparison.OrdinalIgnoreCase))
                 palmAdvanceRatio = 0.10f;
             else if (string.Equals(heldBagItem.ActionName, "Düdük", System.StringComparison.OrdinalIgnoreCase))
                 palmAdvanceRatio = 0.16f;
-            RefreshFirstPersonGripAnchor(itemDepth * 0.5f + 0.006f, palmAdvanceRatio);
+            bool isPlanter = heldBagItem.ActionName.IndexOf("Saksı", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            float palmSurfaceOffset = isPlanter
+                ? 0f
+                : heldBagItem.ActionName.IndexOf("El feneri", System.StringComparison.OrdinalIgnoreCase) >= 0
+                    || heldBagItem.ActionName.IndexOf("İlk yardım seti", System.StringComparison.OrdinalIgnoreCase) >= 0
+                    ? 0.035f
+                    : 0.006f;
+            RefreshFirstPersonGripAnchor(itemDepth * 0.5f + palmSurfaceOffset, palmAdvanceRatio);
             if (string.Equals(heldBagItem.ActionName, "Acil durum radyosu", System.StringComparison.OrdinalIgnoreCase))
                 firstPersonItemAnchor.position += playerCamera.transform.right * 0.04f;
             else if (string.Equals(heldBagItem.ActionName, "Cep telefonu", System.StringComparison.OrdinalIgnoreCase))
@@ -693,10 +859,20 @@ public sealed class PrototypePlayerController : MonoBehaviour
 
     private float GetFirstPersonHeldItemSize(string actionName)
     {
+        if (actionName.IndexOf("Bahçe masası", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return 0.12f;
+        if (actionName.IndexOf("Bahçe sandalyesi", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return 0.14f;
+        if (actionName.IndexOf("Saksı", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return 0.12f;
+        if (actionName.IndexOf("El feneri", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return 0.11f;
+        if (actionName.IndexOf("İlk yardım seti", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return 0.12f;
         if (string.Equals(actionName, "Cep telefonu", System.StringComparison.OrdinalIgnoreCase))
             return 0.15f;
         if (string.Equals(actionName, "Su şişesi", System.StringComparison.OrdinalIgnoreCase))
-            return 0.12f;
+            return 0.10f;
         if (string.Equals(actionName, "Düdük", System.StringComparison.OrdinalIgnoreCase))
             return 0.13f;
         if (string.Equals(actionName, "İlk yardım çantası", System.StringComparison.OrdinalIgnoreCase))
@@ -946,6 +1122,16 @@ public sealed class PrototypePlayerController : MonoBehaviour
         }
 
         PrototypeInteractable target = FindLookTarget();
+        if (scenario.IsTornadoScenario && target != null)
+        {
+            string tornadoPrompt = scenario.GetTornadoInteractionPrompt(target);
+            if (!string.IsNullOrEmpty(tornadoPrompt))
+            {
+                PrototypeBootstrap.Instance.SetPrompt(tornadoPrompt);
+                return;
+            }
+        }
+
         if (target == null || target.IsComplete)
         {
             PrototypeBootstrap.Instance.SetPrompt(string.Empty);

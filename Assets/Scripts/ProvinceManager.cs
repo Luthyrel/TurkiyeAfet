@@ -39,6 +39,8 @@ public sealed class ProvinceManager : MonoBehaviour
     private static readonly HashSet<int> WildfireTrainingPlates = new HashSet<int> { 48 };
     // Çanakkale is a selected storm-training location for the simulation, not an official risk ranking.
     private static readonly HashSet<int> StormTrainingPlates = new HashSet<int> { 17 };
+    // Konya is a scenario selection for tornado awareness, not an official risk ranking.
+    private static readonly HashSet<int> TornadoTrainingPlates = new HashSet<int> { 42 };
 
     public static ProvinceManager Instance { get; private set; }
 
@@ -52,11 +54,14 @@ public sealed class ProvinceManager : MonoBehaviour
     public bool IsLandslideTrainingProvince(int plateCode) => LandslideTrainingPlates.Contains(plateCode);
     public bool IsWildfireTrainingProvince(int plateCode) => WildfireTrainingPlates.Contains(plateCode);
     public bool IsStormTrainingProvince(int plateCode) => StormTrainingPlates.Contains(plateCode);
+    public bool IsTornadoTrainingProvince(int plateCode) => TornadoTrainingPlates.Contains(plateCode);
 
     public GameManager.DisasterType GetPrimaryDisasterForProvince(int plateCode)
     {
         if (IsWildfireTrainingProvince(plateCode))
             return GameManager.DisasterType.Wildfire;
+        if (IsTornadoTrainingProvince(plateCode))
+            return GameManager.DisasterType.Tornado;
         if (IsStormTrainingProvince(plateCode))
             return GameManager.DisasterType.Storm;
         if (IsLandslideTrainingProvince(plateCode))
@@ -89,6 +94,8 @@ public sealed class ProvinceManager : MonoBehaviour
                 return province.plateCode;
         return 17;
     }
+
+    public int GetFirstTornadoTrainingProvincePlate() => 42;
 
     public bool IsScenarioCompleted(int plateCode, GameManager.DisasterType disaster)
     {
@@ -124,6 +131,7 @@ public sealed class ProvinceManager : MonoBehaviour
             GameManager.DisasterType.Landslide => "Heyelan",
             GameManager.DisasterType.Wildfire => "OrmanYangini",
             GameManager.DisasterType.Storm => "Firtina",
+            GameManager.DisasterType.Tornado => "Hortum",
             _ => "Deprem"
         };
     }
@@ -244,6 +252,7 @@ public sealed class ProvinceManager : MonoBehaviour
             GameManager.DisasterType.Landslide => GetFirstLandslideTrainingProvincePlate(),
             GameManager.DisasterType.Wildfire => 48,
             GameManager.DisasterType.Storm => GetFirstStormTrainingProvincePlate(),
+            GameManager.DisasterType.Tornado => GetFirstTornadoTrainingProvincePlate(),
             _ => 6
         };
     }
@@ -265,7 +274,8 @@ public sealed class ProvinceManager : MonoBehaviour
         return HasAnyCompletedScenario(GameManager.DisasterType.Flood)
             || HasAnyCompletedScenario(GameManager.DisasterType.Landslide)
             || HasAnyCompletedScenario(GameManager.DisasterType.Wildfire)
-            || HasAnyCompletedScenario(GameManager.DisasterType.Storm);
+            || HasAnyCompletedScenario(GameManager.DisasterType.Storm)
+            || HasAnyCompletedScenario(GameManager.DisasterType.Tornado);
     }
 
     public bool HasAnyCompletedScenario(GameManager.DisasterType disaster)
@@ -291,6 +301,7 @@ public sealed class ProvinceManager : MonoBehaviour
             PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Heyelan.Completed", plate));
             PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.OrmanYangini.Completed", plate));
             PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Firtina.Completed", plate));
+            PlayerPrefs.DeleteKey(ProgressKey("TurkiyeAfet.Hortum.Completed", plate));
         }
 
         // Clear the older hazard-wide completion flags too; keep scores and other preferences.
@@ -299,6 +310,7 @@ public sealed class ProvinceManager : MonoBehaviour
         PlayerPrefs.DeleteKey("TurkiyeAfet.Heyelan.Completed");
         PlayerPrefs.DeleteKey("TurkiyeAfet.OrmanYangini.Completed");
         PlayerPrefs.DeleteKey("TurkiyeAfet.Firtina.Completed");
+        PlayerPrefs.DeleteKey("TurkiyeAfet.Hortum.Completed");
         PlayerPrefs.Save();
     }
 }

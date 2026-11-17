@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -74,6 +75,35 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private Light stormLightning;
     private Transform stormPowerPolePivot;
     private Vector3 stormShelterPosition = new Vector3(0f, 0f, 3.5f);
+    private ParticleSystem tornadoFunnel;
+    private ParticleSystem tornadoDebris;
+    private Light tornadoCoreLight;
+    private GameObject tornadoVfxRoot;
+    private Texture2D tornadoParticleTexture;
+    private Light tornadoSun;
+    private float tornadoOriginalSunIntensity;
+    private float tornadoOriginalAmbientIntensity;
+    private UnityEngine.Rendering.AmbientMode tornadoOriginalAmbientMode;
+    private Color tornadoOriginalAmbientSkyColor;
+    private Color tornadoOriginalAmbientEquatorColor;
+    private Color tornadoOriginalAmbientGroundColor;
+    private Material tornadoOriginalSkybox;
+    private Material tornadoRuntimeSkybox;
+    private float tornadoOriginalSkyboxExposure;
+    private bool tornadoSkyboxHasExposure;
+    private bool tornadoOriginalFogEnabled;
+    private FogMode tornadoOriginalFogMode;
+    private float tornadoOriginalFogDensity;
+    private Color tornadoOriginalFogColor;
+    private readonly List<Transform> tornadoLooseObjects = new List<Transform>();
+    private readonly List<Vector3> tornadoLooseObjectHomes = new List<Vector3>();
+    private readonly List<Quaternion> tornadoLooseObjectHomeRotations = new List<Quaternion>();
+    private readonly List<Vector3> tornadoLooseObjectVelocities = new List<Vector3>();
+    private readonly List<PrototypeInteractable> tornadoLooseObjectPreparationTasks = new List<PrototypeInteractable>();
+    private readonly List<GameObject> tornadoDamageProps = new List<GameObject>();
+    private Animator tornadoResidentAnimator;
+    private Transform tornadoResidentModelRoot;
+    private Coroutine tornadoResidentPoseRoutine;
 
     public PrototypeScenario Scenario => scenario;
 
@@ -122,6 +152,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                     GameManager.DisasterType.Landslide => ProvinceManager.Instance.GetFirstLandslideTrainingProvincePlate(),
                     GameManager.DisasterType.Wildfire => 48,
                     GameManager.DisasterType.Storm => ProvinceManager.Instance.GetFirstStormTrainingProvincePlate(),
+                    GameManager.DisasterType.Tornado => ProvinceManager.Instance.GetFirstTornadoTrainingProvincePlate(),
                     _ => 6
                 };
             ProvinceManager.Instance.SelectProvince(savedPlate);
@@ -133,6 +164,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             GameManager.DisasterType.Landslide => "Heyelan Farkındalık Senaryosu",
             GameManager.DisasterType.Wildfire => "Orman Yangını Tahliye Tatbikatı",
             GameManager.DisasterType.Storm => "Fırtına Güvenli Barınma Tatbikatı",
+            GameManager.DisasterType.Tornado => "Hortum Güvenli Alan ve Tahliye Tatbikatı",
             _ => "Deprem Senaryosu"
         };
         scenario = new GameObject(scenarioName).AddComponent<PrototypeScenario>();
@@ -144,6 +176,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             BuildWildfireWorld();
         else if (worldDisasterType == GameManager.DisasterType.Storm)
             BuildStormWorld();
+        else if (worldDisasterType == GameManager.DisasterType.Tornado)
+            BuildTornadoWorld();
         else
             BuildWorld();
 
@@ -163,6 +197,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             GameManager.DisasterType.Landslide => new Vector3(0f, 0f, 10f),
             GameManager.DisasterType.Wildfire => new Vector3(0f, 0f, 13f),
             GameManager.DisasterType.Storm => new Vector3(0f, 0f, -7.5f),
+            GameManager.DisasterType.Tornado => new Vector3(-8f, 0f, 1.6f),
             _ => new Vector3(-0.4f, 0f, -2.3f)
         };
         float playerYaw = worldDisasterType switch
@@ -171,6 +206,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             GameManager.DisasterType.Landslide => 180f,
             GameManager.DisasterType.Wildfire => 180f,
             GameManager.DisasterType.Storm => 0f,
+            GameManager.DisasterType.Tornado => 180f,
             _ => 255f
         };
         player.Initialize(scenario, playerSpawn, playerYaw);
@@ -185,6 +221,11 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         {
             scenario.ConfigureStorm(stormShelterPosition);
             scenario.ConfigureStormDoor(stormDoorInteraction);
+        }
+        else if (worldDisasterType == GameManager.DisasterType.Tornado)
+        {
+            scenario.ConfigureTornado(new Vector3(-8f, 0f, -7.25f));
+            scenario.ConfigureTornadoHazard(new Vector3(8f, 0f, 1f));
         }
         player.SetControlsEnabled(false);
 
@@ -343,6 +384,9 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                     break;
                 case GameManager.DisasterType.Storm:
                     BuildStormWorld();
+                    break;
+                case GameManager.DisasterType.Tornado:
+                    BuildTornadoWorld();
                     break;
                 default:
                     BuildWorld();
@@ -711,6 +755,932 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         BuildWildfireFront(forestFloor, grass, flameParticles);
         BuildWildfireSmoke();
         BuildInvisibleMapBoundary("Orman Yangını", Vector3.zero, 76f, 64f);
+    }
+
+    private void BuildTornadoWorld()
+    {
+        tornadoLooseObjects.Clear();
+        tornadoLooseObjectHomes.Clear();
+        tornadoLooseObjectHomeRotations.Clear();
+        tornadoLooseObjectVelocities.Clear();
+        tornadoLooseObjectPreparationTasks.Clear();
+        tornadoDamageProps.Clear();
+        tornadoOriginalFogEnabled = RenderSettings.fog;
+        tornadoOriginalFogMode = RenderSettings.fogMode;
+        tornadoOriginalFogDensity = RenderSettings.fogDensity;
+        tornadoOriginalFogColor = RenderSettings.fogColor;
+        tornadoOriginalAmbientIntensity = RenderSettings.ambientIntensity;
+        tornadoOriginalAmbientMode = RenderSettings.ambientMode;
+        tornadoOriginalAmbientSkyColor = RenderSettings.ambientSkyColor;
+        tornadoOriginalAmbientEquatorColor = RenderSettings.ambientEquatorColor;
+        tornadoOriginalAmbientGroundColor = RenderSettings.ambientGroundColor;
+        tornadoOriginalSkybox = RenderSettings.skybox;
+        if (Application.isPlaying && tornadoOriginalSkybox != null)
+        {
+            tornadoRuntimeSkybox = new Material(tornadoOriginalSkybox);
+            tornadoRuntimeSkybox.name = "Hortum Tatbikatı - Kararan Gökyüzü";
+            tornadoSkyboxHasExposure = tornadoRuntimeSkybox.HasProperty("_Exposure");
+            if (tornadoSkyboxHasExposure)
+                tornadoOriginalSkyboxExposure = tornadoRuntimeSkybox.GetFloat("_Exposure");
+            RenderSettings.skybox = tornadoRuntimeSkybox;
+        }
+        tornadoSun = GameObject.Find("Yumuşak Gün Işığı")?.GetComponent<Light>();
+        tornadoOriginalSunIntensity = tornadoSun != null ? tornadoSun.intensity : 1f;
+        RenderSettings.fog = true;
+        RenderSettings.fogColor = new Color32(105, 111, 116, 255);
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogDensity = 0.0015f;
+        RenderSettings.ambientSkyColor = new Color32(134, 150, 162, 255);
+        Material ground = MakeMaterial("Hortum Mahallesi Çim ve Zemin", new Color32(96, 112, 82, 255));
+        Material lawn = MakeMaterial("Hortum Evi Ön Bahçesi", new Color32(76, 105, 70, 255));
+        Material concrete = MakeMaterial("Hortum Mahallesi Yaya Yolu", new Color32(126, 124, 115, 255));
+        Material floor = MakeMaterial("Hortum Evi İç Zemin", new Color32(135, 130, 117, 255));
+        Material wall = MakeMaterial("Hortum Evi Dış Sıva", new Color32(185, 178, 160, 255));
+        Material innerWall = MakeMaterial("Hortum Evi İç Sıva", new Color32(196, 190, 177, 255));
+        Material trim = MakeMaterial("Hortum Evi Koyu Ahşap", new Color32(72, 61, 51, 255));
+        Material roof = MakeMaterial("Hortum Evi Kiremit Çatısı", new Color32(102, 65, 52, 255));
+        Material glass = MakeMaterial("Hortum Evi Pencere Camı", new Color32(71, 98, 111, 255));
+        Material safe = MakeMaterial("Hortum Güvenli Oda Halısı", new Color32(89, 119, 96, 255));
+        Material warning = MakeMaterial("Hortum Tehlike Uyarı Sarısı", new Color32(220, 164, 69, 255));
+        Material metal = MakeMaterial("Hortum Hasarlı Direk Metali", new Color32(55, 61, 61, 255));
+        Material road = MakeMaterial("Hortum Mahalle Yolu Asfaltı", new Color32(59, 65, 66, 255));
+        Material binMaterial = MakeMaterial("Hortum Hafif Dış Mekân Eşyası", new Color32(55, 105, 92, 255));
+
+        CreateBox("Hortum Mahallesi Zemin", new Vector3(0f, -0.25f, 0f), new Vector3(62f, 0.5f, 58f), ground);
+        CreateBox("Mahalle Yolu", new Vector3(0f, 0.012f, 5.8f), new Vector3(54f, 0.04f, 3.6f), road);
+        CreateBox("Evin Ön Bahçesi", new Vector3(-8f, 0.008f, 2.65f), new Vector3(10f, 0.025f, 6.0f), lawn);
+        CreateBox("Bahçe Yaya Yolu", new Vector3(-8f, 0.027f, 1.55f), new Vector3(1.8f, 0.04f, 4.2f), concrete);
+        CreateBox("Hortum Evi İç Zemin", new Vector3(-8f, -0.045f, -5f), new Vector3(7.95f, 0.11f, 8.75f), floor);
+        CreateTornadoNeighborHouse("Batıdaki Komşu Ev", new Vector3(-21f, 0f, -5f), new Vector3(7f, 2.7f, 8f), wall, roof, trim, glass);
+        CreateTornadoNeighborHouse("Doğudaki Komşu Ev", new Vector3(8f, 0f, -8f), new Vector3(7f, 2.7f, 8f), wall, roof, trim, glass);
+
+        CreateBox("Hortum Evi Arka Duvarı", new Vector3(-8f, 1.45f, -9.4f), new Vector3(8f, 2.9f, 0.25f), wall);
+        CreateBox("Hortum Evi Sol Duvarı", new Vector3(-12f, 1.45f, -5f), new Vector3(0.25f, 2.9f, 8.8f), wall);
+        CreateBox("Hortum Evi Sağ Duvarı", new Vector3(-4f, 1.45f, -5f), new Vector3(0.25f, 2.9f, 8.8f), wall);
+        CreateBox("Hortum Evi Ön Duvarı Sol", new Vector3(-10.35f, 1.45f, -0.6f), new Vector3(3.3f, 2.9f, 0.25f), wall);
+        CreateBox("Hortum Evi Ön Duvarı Sağ", new Vector3(-5.65f, 1.45f, -0.6f), new Vector3(3.3f, 2.9f, 0.25f), wall);
+        CreateBox("Hortum Evi Giriş Kapı Üstü", new Vector3(-8f, 2.48f, -0.6f), new Vector3(1.4f, 0.84f, 0.25f), wall);
+
+        // A separate, enclosed rear room with its own door creates an actual windowless refuge.
+        CreateBox("Güvenli Oda Bölme Duvarı Sol", new Vector3(-10.35f, 1.35f, -5f), new Vector3(3.3f, 2.7f, 0.22f), innerWall);
+        CreateBox("Güvenli Oda Bölme Duvarı Sağ", new Vector3(-5.65f, 1.35f, -5f), new Vector3(3.3f, 2.7f, 0.22f), innerWall);
+        CreateBox("Güvenli Oda Kapı Üstü", new Vector3(-8f, 2.42f, -5f), new Vector3(1.4f, 0.56f, 0.22f), innerWall);
+        // Close the narrow eave gap above the refuge partition walls. This low ceiling
+        // overlaps their tops and the roof edge so the outside sky cannot show through.
+        CreateBox("Güvenli Oda Tavan Boşluğu Kapatması", new Vector3(-8f, 2.87f, -7.25f),
+            new Vector3(8.05f, 0.34f, 4.45f), innerWall);
+        CreateBox("Güvenli Oda Halısı", new Vector3(-8f, 0.018f, -7.25f), new Vector3(5.8f, 0.025f, 3.65f), safe);
+
+        // Gabled roof and window trim make the house read as a small detached home, not a sealed cube.
+        CreateBox("Hortum Evi Çatı Sol Eğim", new Vector3(-10.0f, 3.4f, -5f), new Vector3(4.45f, 0.24f, 9.35f), roof)
+            .transform.rotation = Quaternion.Euler(0f, 0f, 10f);
+        CreateBox("Hortum Evi Çatı Sağ Eğim", new Vector3(-6.0f, 3.4f, -5f), new Vector3(4.45f, 0.24f, 9.35f), roof)
+            .transform.rotation = Quaternion.Euler(0f, 0f, -10f);
+        CreateTornadoGableWall("Hortum Evi Ön Üçgen Duvarı", new Vector3(-8f, 2.9f, -0.47f), wall);
+        CreateTornadoGableWall("Hortum Evi Arka Üçgen Duvarı", new Vector3(-8f, 2.9f, -9.27f), wall);
+        CreateTornadoWindow("Hortum Evi Ön Pencere Sol", new Vector3(-10.25f, 1.78f, -0.43f), glass, trim);
+        CreateTornadoWindow("Hortum Evi Ön Pencere Sağ", new Vector3(-5.75f, 1.78f, -0.43f), glass, trim);
+
+        BuildTornadoPlayableTasks(warning, metal, binMaterial, roof, trim, safe, concrete, innerWall, glass);
+        BuildTornadoVfx();
+        BuildInvisibleMapBoundary("Hortum", Vector3.zero, 62f, 58f);
+        if (!Application.isPlaying)
+        {
+            RenderSettings.fog = tornadoOriginalFogEnabled;
+            RenderSettings.fogMode = tornadoOriginalFogMode;
+            RenderSettings.fogDensity = tornadoOriginalFogDensity;
+            RenderSettings.fogColor = tornadoOriginalFogColor;
+            RenderSettings.ambientIntensity = tornadoOriginalAmbientIntensity;
+            RenderSettings.ambientMode = tornadoOriginalAmbientMode;
+            RenderSettings.ambientSkyColor = tornadoOriginalAmbientSkyColor;
+            RenderSettings.ambientEquatorColor = tornadoOriginalAmbientEquatorColor;
+            RenderSettings.ambientGroundColor = tornadoOriginalAmbientGroundColor;
+            if (tornadoSun != null) tornadoSun.intensity = tornadoOriginalSunIntensity;
+        }
+    }
+
+    private void CreateTornadoWindow(string name, Vector3 center, Material glass, Material frame)
+    {
+        CreateBox(name + " Cam", center, new Vector3(1.25f, 0.92f, 0.08f), glass);
+        CreateBox(name + " Üst Kasa", center + Vector3.up * 0.53f, new Vector3(1.42f, 0.10f, 0.16f), frame);
+        CreateBox(name + " Alt Kasa", center - Vector3.up * 0.53f, new Vector3(1.42f, 0.10f, 0.22f), frame);
+        CreateBox(name + " Sol Kasa", center + Vector3.left * 0.68f, new Vector3(0.10f, 1.12f, 0.16f), frame);
+        CreateBox(name + " Sağ Kasa", center + Vector3.right * 0.68f, new Vector3(0.10f, 1.12f, 0.16f), frame);
+        CreateBox(name + " Orta Kayıt", center, new Vector3(0.055f, 0.92f, 0.13f), frame);
+    }
+
+    private void CreateTornadoGableWall(string name, Vector3 baseCenter, Material wallMaterial)
+    {
+        GameObject gable = new GameObject(name);
+        gable.transform.position = baseCenter;
+        Mesh mesh = new Mesh { name = name + " Mesh" };
+        mesh.vertices = new[]
+        {
+            new Vector3(-4f, 0f, 0f), new Vector3(4f, 0f, 0f), new Vector3(0f, 0.85f, 0f),
+            new Vector3(-4f, 0f, 0f), new Vector3(4f, 0f, 0f), new Vector3(0f, 0.85f, 0f)
+        };
+        mesh.triangles = new[] { 0, 1, 2, 5, 4, 3 };
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        gable.AddComponent<MeshFilter>().sharedMesh = mesh;
+        MeshRenderer renderer = gable.AddComponent<MeshRenderer>();
+        renderer.sharedMaterial = wallMaterial;
+        MeshCollider collider = gable.AddComponent<MeshCollider>();
+        collider.sharedMesh = mesh;
+    }
+
+    private void CreateTornadoNeighborHouse(string name, Vector3 center, Vector3 size, Material wall, Material roof, Material trim, Material glass)
+    {
+        CreateBox(name + " Gövde", center + Vector3.up * (size.y * 0.5f), size, wall);
+        CreateBox(name + " Çatı", center + Vector3.up * (size.y + 0.18f), new Vector3(size.x + 0.55f, 0.36f, size.z + 0.55f), roof);
+        CreateBox(name + " Saçak", center + Vector3.up * (size.y - 0.08f), new Vector3(size.x + 0.8f, 0.12f, size.z + 0.8f), trim);
+        CreateBox(name + " Ön Pencere", center + new Vector3(0f, 1.65f, size.z * 0.5f + 0.035f),
+            new Vector3(1.45f, 0.95f, 0.08f), glass);
+    }
+
+    private void BuildTornadoPlayableTasks(Material warning, Material metal, Material binMaterial,
+        Material roof, Material trim, Material safe, Material concrete, Material innerWall, Material glass)
+    {
+        Material chairPlastic = MakeMaterial("Hortum Bahçe Sandalyesi Füme Mavi Plastik", new Color32(73, 91, 105, 255));
+        Material tableWood = MakeMaterial("Hortum Bahçe Masası Sıcak Ahşap", new Color32(139, 99, 65, 255));
+        Material darkPlastic = MakeMaterial("Hortum Koyu Plastik", new Color32(48, 52, 55, 255));
+        Material potMaterial = MakeMaterial("Hortum Bahçe Saksısı Seramik", new Color32(154, 92, 68, 255));
+        Material leafMaterial = MakeMaterial("Hortum Saksı Bitkisi Yaprakları", new Color32(70, 103, 65, 255));
+        Material bagFabric = MakeMaterial("Hortum Acil Çanta Turuncu Kırmızı Kumaş", new Color32(174, 69, 45, 255));
+        Material medicalRed = MakeMaterial("Hortum İlk Yardım Seti Kırmızısı", new Color32(177, 47, 42, 255));
+        Material cleanWhite = MakeMaterial("Hortum İlk Yardım Seti Beyazı", new Color32(239, 232, 214, 255));
+
+        // A real hinged exterior door and a second hinged door divide the entrance from the refuge.
+        CreateTornadoDoor("Bahçe Giriş Kapısı", new Vector3(-8.70f, 0f, -0.60f),
+            1.40f, 2.12f, trim, false);
+        PrototypeInteractable safeRoomDoor = CreateTornadoDoor("Penceresiz Oda Kapısı", new Vector3(-8.70f, 0f, -5f),
+            1.40f, 2.12f, trim, false);
+
+        GameObject storage = CreateTornadoProp("Eşya Sabitleme Rafı", new Vector3(-11.55f, 0f, -2.8f),
+            new Vector3(0.44f, 1.5f, 0.62f));
+        Collider storageBodyCollider = storage.GetComponent<Collider>();
+        if (storageBodyCollider != null) storageBodyCollider.enabled = false;
+        CreateTornadoPropPart(storage.transform, PrimitiveType.Cube, "Raf Arka Paneli", new Vector3(0f, 0.92f, 0f),
+            new Vector3(0.12f, 1.82f, 3.4f), trim);
+        CreateTornadoPropPart(storage.transform, PrimitiveType.Cube, "Raf Üst Tabla", new Vector3(0.38f, 1.48f, 0f),
+            new Vector3(1.18f, 0.09f, 3.4f), tableWood);
+        GameObject lowerShelf = CreateTornadoPropPart(storage.transform, PrimitiveType.Cube, "Raf Alt Eşya Tablası",
+            new Vector3(0.38f, 0.12f, 0f), new Vector3(1.18f, 0.09f, 3.4f), tableWood);
+        BoxCollider lowerShelfCollider = lowerShelf.GetComponent<BoxCollider>();
+        if (lowerShelfCollider != null)
+        {
+            lowerShelfCollider.enabled = true;
+            lowerShelfCollider.isTrigger = true;
+        }
+        for (int side = -1; side <= 1; side += 2)
+            CreateTornadoPropPart(storage.transform, PrimitiveType.Cube, "Raf Yan Desteği",
+                new Vector3(0.38f, 0.78f, side * 1.62f), new Vector3(1.18f, 1.30f, 0.10f), trim);
+        GameObject storageLabel = CreateTornadoPropPart(storage.transform, PrimitiveType.Cube, "Raf Sabitleme Levhası",
+            new Vector3(0.20f, 1.72f, 0f), new Vector3(0.10f, 0.30f, 1.65f), warning);
+        BoxCollider storageLabelCollider = storageLabel.GetComponent<BoxCollider>();
+        if (storageLabelCollider != null) storageLabelCollider.enabled = false;
+        CreateTornadoPropPart(storage.transform, PrimitiveType.Cube, "Raf Levhası Siyah Şerit",
+            new Vector3(0.26f, 1.72f, 0f), new Vector3(0.02f, 0.08f, 1.45f), darkPlastic);
+        PrototypeInteractable gardenStorage = storage.AddComponent<PrototypeInteractable>();
+        gardenStorage.Configure(PrototypeAction.TornadoPreparation, "Bahçedeki üç eşyayı güvenli rafa taşı (0/3)");
+
+        GameObject chair = CreateTornadoProp("Bahçe Sandalyesi", new Vector3(-2.8f, 0f, 3.5f), new Vector3(0.74f, 0.92f, 0.72f));
+        CreateTornadoPropPart(chair.transform, PrimitiveType.Cube, "Sandalye Oturağı", new Vector3(0f, 0.44f, 0f),
+            new Vector3(0.60f, 0.10f, 0.58f), chairPlastic);
+        CreateTornadoPropPart(chair.transform, PrimitiveType.Cube, "Sandalye Sırtlığı", new Vector3(0f, 0.70f, 0.23f),
+            new Vector3(0.60f, 0.44f, 0.08f), chairPlastic);
+        for (int sx = -1; sx <= 1; sx += 2)
+        for (int sz = -1; sz <= 1; sz += 2)
+            CreateTornadoPropPart(chair.transform, PrimitiveType.Cube, "Sandalye Ayağı",
+                new Vector3(sx * 0.22f, 0.21f, sz * 0.20f), new Vector3(0.055f, 0.40f, 0.055f), darkPlastic);
+
+        PrototypeInteractable chairTask = chair.AddComponent<PrototypeInteractable>();
+        chairTask.Configure(PrototypeAction.TornadoPreparation, "Bahçe sandalyesi");
+        chairTask.ConfigureHeldGrip(Vector3.up, Vector3.up, Vector3.back);
+
+        scenario.AddTornadoGardenItem(chairTask);
+        RegisterTornadoLooseObject(chair.transform, chairTask);
+
+        GameObject table = CreateTornadoProp("Bahçe Masası", new Vector3(-13.3f, 0f, 4.1f), new Vector3(0.95f, 0.82f, 0.74f));
+        CreateTornadoPropPart(table.transform, PrimitiveType.Cube, "Masa Tablası", new Vector3(0f, 0.72f, 0f),
+            new Vector3(1.18f, 0.09f, 0.84f), tableWood);
+        for (int sx = -1; sx <= 1; sx += 2)
+        for (int sz = -1; sz <= 1; sz += 2)
+            CreateTornadoPropPart(table.transform, PrimitiveType.Cube, "Masa Ayağı",
+                new Vector3(sx * 0.48f, 0.35f, sz * 0.32f), new Vector3(0.07f, 0.68f, 0.07f), darkPlastic);
+        PrototypeInteractable tableTask = table.AddComponent<PrototypeInteractable>();
+        tableTask.Configure(PrototypeAction.TornadoPreparation, "Bahçe masası");
+        tableTask.ConfigureHeldGrip(Vector3.up, Vector3.up, Vector3.back);
+        scenario.AddTornadoGardenItem(tableTask);
+        RegisterTornadoLooseObject(table.transform, tableTask);
+
+        GameObject planter = CreateTornadoProp("Bahçe Saksısı", new Vector3(-3.2f, 0f, 1.1f), new Vector3(0.62f, 0.9f, 0.62f));
+        CreateTornadoPropPart(planter.transform, PrimitiveType.Cylinder, "Seramik Saksı Gövdesi", new Vector3(0f, 0.28f, 0f),
+            new Vector3(0.29f, 0.28f, 0.29f), potMaterial);
+        CreateTornadoPropPart(planter.transform, PrimitiveType.Cylinder, "Saksı Kenarı", new Vector3(0f, 0.55f, 0f),
+            new Vector3(0.34f, 0.055f, 0.34f), potMaterial);
+        for (int leaf = 0; leaf < 5; leaf++)
+        {
+            float angle = leaf * 72f;
+            float radians = angle * Mathf.Deg2Rad;
+            Vector3 direction = new Vector3(Mathf.Cos(radians), 0.65f, Mathf.Sin(radians));
+            GameObject blade = CreateTornadoPropPart(planter.transform, PrimitiveType.Sphere, "Saksı Bitkisi Yaprağı",
+                new Vector3(direction.x * 0.16f, 0.73f + (leaf % 2) * 0.05f, direction.z * 0.16f),
+                new Vector3(0.15f, 0.36f, 0.12f), leafMaterial);
+            blade.transform.localRotation = Quaternion.LookRotation(direction, Vector3.up) * Quaternion.Euler(18f, 0f, 0f);
+        }
+        PrototypeInteractable planterTask = planter.AddComponent<PrototypeInteractable>();
+        planterTask.Configure(PrototypeAction.TornadoPreparation, "Bahçe saksısı");
+        planterTask.ConfigureHeldGrip(Vector3.up, Vector3.up, Vector3.back);
+        scenario.AddTornadoGardenItem(planterTask);
+        RegisterTornadoLooseObject(planter.transform, planterTask);
+
+        CreateBox("Acil Hazırlık Tezgâhı", new Vector3(-6.15f, 0.36f, -3.05f),
+            new Vector3(2.75f, 0.72f, 0.9f), trim);
+        CreateBox("Acil Hazırlık Tezgâhı Üstü", new Vector3(-6.15f, 0.76f, -3.05f),
+            new Vector3(2.9f, 0.08f, 1.0f), concrete);
+
+        GameObject bag = CreateTornadoProp("Acil Durum Çantası", new Vector3(-7.15f, 0.80f, -3.05f),
+            new Vector3(0.65f, 0.48f, 0.46f));
+        CreateTornadoPropPart(bag.transform, PrimitiveType.Cube, "Çanta Kumaş Gövdesi", new Vector3(0f, 0.17f, 0f),
+            new Vector3(0.60f, 0.34f, 0.42f), bagFabric);
+        GameObject bagPocket = CreateTornadoPropPart(bag.transform, PrimitiveType.Cube, "Çanta Ön Cebi", new Vector3(0f, 0.16f, -0.23f),
+            new Vector3(0.37f, 0.19f, 0.035f), darkPlastic);
+        BoxCollider bagPocketCollider = bagPocket.GetComponent<BoxCollider>();
+        if (bagPocketCollider != null)
+        {
+            bagPocketCollider.enabled = true;
+            bagPocketCollider.isTrigger = true;
+        }
+        CreateTornadoPropPart(bag.transform, PrimitiveType.Cube, "Acil Çanta Beyaz Artı Yatay", new Vector3(0f, 0.17f, -0.255f),
+            new Vector3(0.20f, 0.045f, 0.025f), cleanWhite);
+        CreateTornadoPropPart(bag.transform, PrimitiveType.Cube, "Acil Çanta Beyaz Artı Dikey", new Vector3(0f, 0.17f, -0.258f),
+            new Vector3(0.045f, 0.17f, 0.03f), cleanWhite);
+        CreateTornadoPropPart(bag.transform, PrimitiveType.Cube, "Çanta Taşıma Askısı", new Vector3(0f, 0.38f, 0.02f),
+            new Vector3(0.055f, 0.035f, 0.40f), warning);
+        GameObject bagLatch = CreateTornadoPropPart(bag.transform, PrimitiveType.Cube, "Acil Çanta Açma Tokası",
+            new Vector3(0.23f, 0.29f, -0.265f), new Vector3(0.10f, 0.10f, 0.04f), warning);
+        BoxCollider bagLatchCollider = bagLatch.GetComponent<BoxCollider>();
+        if (bagLatchCollider != null) bagLatchCollider.enabled = true;
+        GameObject closedBagLid = new GameObject("Kapalı Çanta Kapağı");
+        closedBagLid.transform.SetParent(bag.transform, false);
+        CreateTornadoPropPart(closedBagLid.transform, PrimitiveType.Cube, "Kapalı Kapak", new Vector3(0f, 0.37f, 0f),
+            new Vector3(0.62f, 0.08f, 0.44f), bagFabric);
+        GameObject openBagInterior = new GameObject("Açık Çanta İç Bölmesi");
+        openBagInterior.transform.SetParent(bag.transform, false);
+        GameObject openBagTray = CreateTornadoPropPart(openBagInterior.transform, PrimitiveType.Cube, "Açık Bölme Tabanı",
+            new Vector3(0f, 0.35f, 0f), new Vector3(0.56f, 0.045f, 0.37f), darkPlastic);
+        BoxCollider openBagTrayCollider = openBagTray.GetComponent<BoxCollider>();
+        if (openBagTrayCollider != null)
+        {
+            openBagTrayCollider.enabled = true;
+            openBagTrayCollider.isTrigger = true;
+        }
+        CreateTornadoPropPart(openBagInterior.transform, PrimitiveType.Cube, "Bölme Arka Kenarı", new Vector3(0f, 0.40f, 0.16f),
+            new Vector3(0.56f, 0.10f, 0.05f), bagFabric);
+        PrototypeInteractable emergencyBag = bag.AddComponent<PrototypeInteractable>();
+        emergencyBag.Configure(PrototypeAction.TornadoPreparation, "Acil durum çantasını hazırla");
+        emergencyBag.ConfigureBagVisual(closedBagLid, openBagInterior, true);
+
+        GameObject water = CreateTornadoProp("İçme Suyu Şişesi", new Vector3(-6.55f, 0.80f, -3.05f), new Vector3(0.20f, 0.40f, 0.20f));
+        CreateTornadoPropPart(water.transform, PrimitiveType.Cylinder, "Şeffaf Su Şişesi", new Vector3(0f, 0.20f, 0f),
+            new Vector3(0.10f, 0.19f, 0.10f), cleanWhite);
+        CreateTornadoPropPart(water.transform, PrimitiveType.Cylinder, "Mavi Şişe Kapağı", new Vector3(0f, 0.41f, 0f),
+            new Vector3(0.055f, 0.025f, 0.055f), glass);
+        PrototypeInteractable waterTask = water.AddComponent<PrototypeInteractable>();
+        waterTask.Configure(PrototypeAction.CollectBagItem, "Su şişesi");
+        waterTask.ConfigureHeldGrip(Vector3.up, Vector3.up, Vector3.back);
+        scenario.AddTornadoEmergencySupply(waterTask);
+
+        GameObject flashlight = CreateTornadoProp("El Feneri", new Vector3(-5.65f, 0.80f, -3.05f), new Vector3(0.34f, 0.18f, 0.18f));
+        CreateTornadoPropPart(flashlight.transform, PrimitiveType.Cylinder, "Fener Gövdesi", new Vector3(0f, 0.09f, 0f),
+            new Vector3(0.09f, 0.16f, 0.09f), darkPlastic, Quaternion.Euler(90f, 0f, 0f));
+        CreateTornadoPropPart(flashlight.transform, PrimitiveType.Cylinder, "Fener Merceği", new Vector3(0f, 0.09f, -0.15f),
+            new Vector3(0.11f, 0.035f, 0.11f), warning, Quaternion.Euler(90f, 0f, 0f));
+        PrototypeInteractable flashlightTask = flashlight.AddComponent<PrototypeInteractable>();
+        flashlightTask.Configure(PrototypeAction.CollectBagItem, "El feneri");
+        flashlightTask.ConfigureHeldGrip(Vector3.back, Vector3.up, Vector3.up);
+        scenario.AddTornadoEmergencySupply(flashlightTask);
+
+        // Keep the kit fully inside the tabletop footprint; the old x position left it
+        // hanging beyond the table edge despite having the correct tabletop height.
+        GameObject firstAid = CreateTornadoProp("İlk Yardım Seti", new Vector3(-4.95f, 0.785f, -3.05f), new Vector3(0.42f, 0.28f, 0.34f));
+        CreateTornadoPropPart(firstAid.transform, PrimitiveType.Cube, "İlk Yardım Çantası", new Vector3(0f, 0.14f, 0f),
+            new Vector3(0.40f, 0.25f, 0.32f), medicalRed);
+        CreateTornadoPropPart(firstAid.transform, PrimitiveType.Cube, "İlk Yardım Arması", new Vector3(0f, 0.15f, -0.17f),
+            new Vector3(0.16f, 0.16f, 0.025f), cleanWhite);
+        CreateTornadoPropPart(firstAid.transform, PrimitiveType.Cube, "İlk Yardım Artısı", new Vector3(0f, 0.15f, -0.19f),
+            new Vector3(0.045f, 0.12f, 0.02f), medicalRed);
+        CreateTornadoPropPart(firstAid.transform, PrimitiveType.Cube, "İlk Yardım Arması Arka Yüz",
+            new Vector3(0f, 0.15f, 0.17f), new Vector3(0.16f, 0.16f, 0.025f), cleanWhite);
+        CreateTornadoPropPart(firstAid.transform, PrimitiveType.Cube, "İlk Yardım Artısı Arka Yüz Yatay",
+            new Vector3(0f, 0.15f, 0.19f), new Vector3(0.12f, 0.045f, 0.02f), medicalRed);
+        CreateTornadoPropPart(firstAid.transform, PrimitiveType.Cube, "İlk Yardım Artısı Arka Yüz Dikey",
+            new Vector3(0f, 0.15f, 0.19f), new Vector3(0.045f, 0.12f, 0.02f), medicalRed);
+        PrototypeInteractable firstAidTask = firstAid.AddComponent<PrototypeInteractable>();
+        firstAidTask.Configure(PrototypeAction.CollectBagItem, "İlk yardım seti");
+        firstAidTask.ConfigureHeldGrip(Vector3.up, Vector3.up, Vector3.back);
+        scenario.AddTornadoEmergencySupply(firstAidTask);
+
+        // The room is identified by its windowless construction and the task panel;
+        // do not place a fake, green, clickable-looking marker on its wall.
+        GameObject safeRoomTaskObject = new GameObject("Penceresiz Güvenli Oda Hazırlık Görevi");
+        safeRoomTaskObject.transform.position = new Vector3(-8f, 0.1f, -8f);
+        PrototypeInteractable safeRoomTask = safeRoomTaskObject.AddComponent<PrototypeInteractable>();
+        safeRoomTask.Configure(PrototypeAction.TornadoPreparation, "Penceresiz güvenli odaya gir ve kapıyı kapat");
+
+        // A wired telephone is mounted inside the refuge, not at an empty marker in the garden.
+        GameObject phone = CreateTornadoProp("Hortum Sonrası Acil Yardım Telefonu", new Vector3(-10.55f, 0.84f, -9.05f),
+            new Vector3(0.48f, 0.72f, 0.18f));
+        CreateTornadoPropPart(phone.transform, PrimitiveType.Cube, "Duvar Telefonu Gövdesi", new Vector3(0f, 0.34f, 0f),
+            new Vector3(0.42f, 0.65f, 0.12f), metal);
+        CreateTornadoPropPart(phone.transform, PrimitiveType.Cube, "Telefon Tuş Takımı", new Vector3(0f, 0.27f, -0.075f),
+            new Vector3(0.23f, 0.25f, 0.035f), cleanWhite);
+        GameObject handset = new GameObject("Hortum Ahize Yuvası");
+        handset.transform.SetParent(phone.transform, false);
+        handset.transform.localPosition = new Vector3(0f, 0.66f, -0.11f);
+        CreateTornadoPropPart(handset.transform, PrimitiveType.Cylinder, "Kırmızı Ahize Sapı",
+            Vector3.zero, new Vector3(0.045f, 0.19f, 0.045f), medicalRed, Quaternion.Euler(0f, 0f, 90f));
+        CreateTornadoPropPart(handset.transform, PrimitiveType.Cylinder, "Kırmızı Ahize Kulaklığı Sol",
+            new Vector3(-0.16f, 0f, 0f), new Vector3(0.065f, 0.055f, 0.065f), medicalRed,
+            Quaternion.Euler(0f, 0f, 90f));
+        CreateTornadoPropPart(handset.transform, PrimitiveType.Cylinder, "Kırmızı Ahize Kulaklığı Sağ",
+            new Vector3(0.16f, 0f, 0f), new Vector3(0.065f, 0.055f, 0.065f), medicalRed,
+            Quaternion.Euler(0f, 0f, 90f));
+        PrototypeInteractable call = phone.AddComponent<PrototypeInteractable>();
+        call.Configure(PrototypeAction.CallForTornadoHelp, "Duvar telefonundan 112'yi ara ve hasarı bildir");
+        call.ConfigureTornadoPhoneVisual(handset.transform);
+        phone.SetActive(false);
+
+        scenario.AddTornadoPreparationTask(gardenStorage);
+        scenario.AddTornadoPreparationTask(emergencyBag);
+        scenario.AddTornadoPreparationTask(safeRoomTask);
+        scenario.ConfigureTornadoTaskStations(gardenStorage, emergencyBag, safeRoomTask, safeRoomDoor, firstAidTask);
+
+        // Unsecured yard props and a small amount of roadside clutter respond to the same moving vortex.
+        GameObject roadsideBin = CreateTornadoProp("Yol Kenarı Tekerlekli Çöp Kutusu", new Vector3(-17.8f, 0f, 4.8f), new Vector3(0.62f, 0.98f, 0.62f));
+        CreateTornadoPropPart(roadsideBin.transform, PrimitiveType.Cylinder, "Çöp Kutusu Gövdesi", new Vector3(0f, 0.42f, 0f),
+            new Vector3(0.28f, 0.42f, 0.28f), binMaterial);
+        CreateTornadoPropPart(roadsideBin.transform, PrimitiveType.Cylinder, "Çöp Kutusu Kapağı", new Vector3(0f, 0.85f, 0f),
+            new Vector3(0.31f, 0.04f, 0.31f), darkPlastic);
+        RegisterTornadoLooseObject(roadsideBin.transform, null);
+        GameObject lightCanopy = CreateTornadoProp("Yol Kenarı Hafif Pazar Tentəsi", new Vector3(17f, 0f, 5.0f), new Vector3(1.1f, 1.8f, 1.0f));
+        CreateTornadoPropPart(lightCanopy.transform, PrimitiveType.Cylinder, "Tente Direği", new Vector3(0f, 0.85f, 0f),
+            new Vector3(0.045f, 0.82f, 0.045f), metal);
+        CreateTornadoPropPart(lightCanopy.transform, PrimitiveType.Cube, "Katlanır Tente", new Vector3(0f, 1.62f, 0f),
+            new Vector3(1.0f, 0.12f, 0.92f), warning);
+        RegisterTornadoLooseObject(lightCanopy.transform, null);
+
+        GameObject damagedPole = CreateTornadoProp("Hortum Sonrası Hasarlı Elektrik Direği", new Vector3(8f, 0f, 1f),
+            new Vector3(0.30f, 3.25f, 0.30f));
+        Collider poleBlocker = damagedPole.GetComponent<Collider>();
+        if (poleBlocker != null) poleBlocker.enabled = false;
+        CreateTornadoPropPart(damagedPole.transform, PrimitiveType.Cylinder, "Yere Yatmış Direk", new Vector3(-0.25f, 0.20f, 0f),
+            new Vector3(0.14f, 1.75f, 0.14f), metal, Quaternion.Euler(0f, 0f, 83f));
+        CreateTornadoPropPart(damagedPole.transform, PrimitiveType.Cube, "Direk Traversi", new Vector3(-1.65f, 0.30f, 0f),
+            new Vector3(1.5f, 0.09f, 0.10f), trim);
+        damagedPole.SetActive(false);
+        tornadoDamageProps.Add(damagedPole);
+        CreateTornadoCable("Kopmuş Elektrik Kablosu A", new Vector3(8.0f, 2.5f, 1.0f), new Vector3(7.4f, 0.12f, 1.9f), metal);
+        CreateTornadoCable("Kopmuş Elektrik Kablosu B", new Vector3(7.8f, 2.4f, 1.0f), new Vector3(9.3f, 0.10f, 1.6f), metal);
+
+        GameObject hazardSign = CreateTornadoProp("Elektrik Hattı Tehlike Bildirim Levhası", new Vector3(2.2f, 0f, 1f),
+            new Vector3(1.55f, 1.55f, 0.6f));
+        Collider signRootCollider = hazardSign.GetComponent<Collider>();
+        if (signRootCollider != null) signRootCollider.enabled = false;
+        // A grounded, two-sided road warning board replaces the thin floating-looking post.
+        CreateTornadoPropPart(hazardSign.transform, PrimitiveType.Cube, "Yere Basan Geniş Levha Ayağı",
+            new Vector3(0f, 0.055f, 0f), new Vector3(1.42f, 0.11f, 0.52f), darkPlastic);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            CreateTornadoPropPart(hazardSign.transform, PrimitiveType.Cube, "Levha Metal Taşıyıcı " + side,
+                new Vector3(side * 0.48f, 0.49f, 0f), new Vector3(0.075f, 0.90f, 0.075f), metal,
+                Quaternion.Euler(0f, 0f, side * -7f));
+        }
+        GameObject signBoard = CreateTornadoPropPart(hazardSign.transform, PrimitiveType.Cube, "Geniş Sarı Elektrik Tehlike Levhası",
+            new Vector3(0f, 1.12f, 0f), new Vector3(1.50f, 0.88f, 0.12f), warning);
+        BoxCollider signBoardCollider = signBoard.GetComponent<BoxCollider>();
+        if (signBoardCollider != null) signBoardCollider.enabled = true;
+        // Keep the warning readable as a simple physical symbol; world-space TextMesh
+        // was oversized and showed through the house walls from the first-person view.
+        for (int side = -1; side <= 1; side += 2)
+        {
+            float faceZ = side * 0.067f;
+            Quaternion faceRotation = side < 0 ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity;
+            GameObject bolt = new GameObject("Elektrik Uyarısı Yıldırım Sembolü " + side);
+            bolt.transform.SetParent(hazardSign.transform, false);
+            bolt.transform.localPosition = new Vector3(0f, 1.12f, faceZ);
+            bolt.transform.localRotation = faceRotation;
+            CreateTornadoPropPart(bolt.transform, PrimitiveType.Cube, "Yıldırım Üst Parçası",
+                new Vector3(0.04f, 0.20f, 0f), new Vector3(0.22f, 0.10f, 0.025f), darkPlastic,
+                Quaternion.Euler(0f, 0f, -35f));
+            CreateTornadoPropPart(bolt.transform, PrimitiveType.Cube, "Yıldırım Orta Parçası",
+                new Vector3(-0.015f, 0.015f, 0f), new Vector3(0.31f, 0.10f, 0.025f), darkPlastic,
+                Quaternion.Euler(0f, 0f, 35f));
+            CreateTornadoPropPart(bolt.transform, PrimitiveType.Cube, "Yıldırım Alt Parçası",
+                new Vector3(0.035f, -0.18f, 0f), new Vector3(0.23f, 0.10f, 0.025f), darkPlastic,
+                Quaternion.Euler(0f, 0f, -35f));
+        }
+        PrototypeInteractable inspect = hazardSign.AddComponent<PrototypeInteractable>();
+        inspect.Configure(PrototypeAction.InspectTornadoHazard, "Kopmuş hattı levhadan güvenli mesafeden tespit et");
+        scenario.AddTornadoAfterTask(inspect);
+        hazardSign.SetActive(false);
+        tornadoDamageProps.Add(hazardSign);
+
+        GameObject roofDebris = CreateTornadoProp("Hortum Sonrası Kopmuş Çatı Parçaları", new Vector3(2.8f, 0f, -7.4f),
+            new Vector3(2.8f, 0.28f, 1.1f));
+        CreateTornadoPropPart(roofDebris.transform, PrimitiveType.Cube, "Kırık Kiremit Paneli", new Vector3(0f, 0.17f, 0f),
+            new Vector3(2.65f, 0.23f, 0.90f), roof, Quaternion.Euler(5f, 18f, -7f));
+        roofDebris.SetActive(false);
+        tornadoDamageProps.Add(roofDebris);
+        GameObject fallenBranch = CreateTornadoProp("Hortum Sonrası Düşen Ağaç Dalı", new Vector3(2.2f, 0f, 4.1f), new Vector3(2.5f, 0.7f, 0.65f));
+        CreateTornadoPropPart(fallenBranch.transform, PrimitiveType.Cylinder, "Kırık Ana Dal", new Vector3(0f, 0.22f, 0f),
+            new Vector3(0.15f, 1.2f, 0.15f), trim, Quaternion.Euler(0f, 0f, 76f));
+        for (int twig = -1; twig <= 1; twig++)
+            CreateTornadoPropPart(fallenBranch.transform, PrimitiveType.Cylinder, "Kırık Yan Dal",
+                new Vector3(twig * 0.45f, 0.38f, 0f), new Vector3(0.055f, 0.45f, 0.055f), trim,
+                Quaternion.Euler(0f, 0f, 32f + twig * 24f));
+        fallenBranch.SetActive(false);
+        tornadoDamageProps.Add(fallenBranch);
+
+        GameObject fenceDamage = new GameObject("Hortum Sonrası Devrilmiş Bahçe Çiti");
+        fenceDamage.transform.position = new Vector3(4.7f, 0f, -0.65f);
+        CreateTornadoPropPart(fenceDamage.transform, PrimitiveType.Cube, "Yerdeki Çit Tahtası A", new Vector3(0f, 0.09f, 0f),
+            new Vector3(3.2f, 0.16f, 0.12f), trim, Quaternion.Euler(0f, 12f, 7f));
+        CreateTornadoPropPart(fenceDamage.transform, PrimitiveType.Cube, "Yerdeki Çit Tahtası B", new Vector3(0.15f, 0.13f, 0.42f),
+            new Vector3(2.4f, 0.16f, 0.12f), trim, Quaternion.Euler(0f, -17f, -6f));
+        fenceDamage.SetActive(false);
+        tornadoDamageProps.Add(fenceDamage);
+
+        GameObject survivor = BuildTornadoResident(new Vector3(0.8f, 0f, 1.9f));
+        PrototypeInteractable assist = survivor.AddComponent<PrototypeInteractable>();
+        assist.Configure(PrototypeAction.AssistTornadoResident, "Yaralı komşunun durumunu kontrol et ve ilk yardım uygula");
+        scenario.AddTornadoAfterTask(call);
+        scenario.AddTornadoAfterTask(assist);
+        tornadoDamageProps.Add(phone);
+        tornadoDamageProps.Add(survivor);
+    }
+
+    private PrototypeInteractable CreateTornadoDoor(string name, Vector3 hinge, float width, float height,
+        Material wood, bool initiallyOpen)
+    {
+        GameObject root = new GameObject(name);
+        root.transform.position = hinge;
+        // Let the closed leaf overlap the jambs and lintel slightly so camera motion
+        // cannot expose thin slivers through the doorway.
+        float leafWidth = width + 0.06f;
+        float leafHeight = height + 0.035f;
+        BoxCollider panelCollider = root.AddComponent<BoxCollider>();
+        panelCollider.center = new Vector3(leafWidth * 0.5f, leafHeight * 0.5f, 0f);
+        panelCollider.size = new Vector3(leafWidth, leafHeight, 0.16f);
+        CreateTornadoPropPart(root.transform, PrimitiveType.Cube, name + " Kapı Kanadı",
+            new Vector3(leafWidth * 0.5f, leafHeight * 0.5f, 0f), new Vector3(leafWidth, leafHeight, 0.12f), wood);
+        CreateTornadoPropPart(root.transform, PrimitiveType.Cube, name + " Kapı Kolu",
+            new Vector3(leafWidth - 0.13f, 1.02f, -0.08f), new Vector3(0.06f, 0.16f, 0.06f), wood);
+        PrototypeInteractable interaction = root.AddComponent<PrototypeInteractable>();
+        interaction.Configure(PrototypeAction.ToggleTornadoDoor, name);
+        interaction.ConfigureTornadoDoor(root.transform, panelCollider, initiallyOpen);
+        return interaction;
+    }
+
+    private GameObject BuildTornadoResident(Vector3 position)
+    {
+        GameObject root = new GameObject("Yardım Bekleyen Yaralı Mahalle Sakini");
+        root.transform.position = position;
+        CapsuleCollider collider = root.AddComponent<CapsuleCollider>();
+        collider.direction = 2;
+        collider.center = new Vector3(0f, 0.31f, 0f);
+        collider.height = 1.65f;
+        collider.radius = 0.30f;
+
+        GameObject civilianPrefab = Resources.Load<GameObject>("PlayerCharacter/Models/CivilianMale");
+        if (civilianPrefab != null)
+        {
+            GameObject model = Instantiate(civilianPrefab, root.transform, false);
+            model.name = "Yaralı Sivil Karakter Modeli";
+            tornadoResidentModelRoot = model.transform;
+            Renderer[] renderers = model.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length > 0)
+            {
+                Bounds bounds = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+                float scale = bounds.size.y > 0.01f ? 1.62f / bounds.size.y : 1f;
+                model.transform.localScale = Vector3.one * scale;
+                model.transform.localPosition = new Vector3(0f, -(bounds.min.y - root.transform.position.y) * scale, 0f);
+            }
+            Animator animator = model.GetComponentInChildren<Animator>(true);
+            RuntimeAnimatorController controller = Resources.Load<RuntimeAnimatorController>("PlayerCharacter/PlayerCharacterController");
+            if (animator != null)
+            {
+                if (controller != null) animator.runtimeAnimatorController = controller;
+                animator.applyRootMotion = false;
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                tornadoResidentAnimator = animator;
+
+            }
+        }
+        else
+        {
+            Material clothes = MakeMaterial("Yaralı Sivil Kıyafeti", new Color32(69, 102, 119, 255));
+            Material skin = MakeMaterial("Yaralı Sivil Ten", new Color32(179, 132, 101, 255));
+            CreateTornadoPropPart(root.transform, PrimitiveType.Capsule, "Sivil Gövde", new Vector3(0f, 0.72f, 0f),
+                new Vector3(0.42f, 0.48f, 0.3f), clothes);
+            CreateTornadoPropPart(root.transform, PrimitiveType.Sphere, "Sivil Baş", new Vector3(0f, 1.25f, 0f),
+                new Vector3(0.24f, 0.28f, 0.24f), skin);
+        }
+        root.SetActive(false);
+        return root;
+    }
+
+    private void CreateTornadoCable(string name, Vector3 start, Vector3 end, Material material)
+    {
+        GameObject cable = new GameObject(name);
+        LineRenderer line = cable.AddComponent<LineRenderer>();
+        line.useWorldSpace = true;
+        line.positionCount = 4;
+        line.SetPosition(0, start);
+        line.SetPosition(1, Vector3.Lerp(start, end, 0.35f) + Vector3.down * 0.6f);
+        line.SetPosition(2, Vector3.Lerp(start, end, 0.72f) + Vector3.down * 0.35f);
+        line.SetPosition(3, end);
+        line.startWidth = 0.055f;
+        line.endWidth = 0.075f;
+        line.sharedMaterial = material;
+        line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        line.receiveShadows = false;
+        Vector3[] points = { start, line.GetPosition(1), line.GetPosition(2), end };
+        for (int i = 0; i < points.Length - 1; i++)
+        {
+            Vector3 delta = points[i + 1] - points[i];
+            GameObject segment = new GameObject("Fiziksel Kablo Bölümü " + (i + 1));
+            segment.transform.SetParent(cable.transform, true);
+            segment.transform.position = (points[i] + points[i + 1]) * 0.5f;
+            segment.transform.rotation = Quaternion.FromToRotation(Vector3.up, delta.normalized);
+            CapsuleCollider collider = segment.AddComponent<CapsuleCollider>();
+            collider.direction = 1;
+            collider.radius = 0.075f;
+            collider.height = delta.magnitude + 0.15f;
+        }
+        cable.SetActive(false);
+        tornadoDamageProps.Add(cable);
+    }
+
+    private GameObject CreateTornadoProp(string name, Vector3 groundPosition, Vector3 colliderSize)
+    {
+        GameObject root = new GameObject(name);
+        root.transform.position = groundPosition;
+        BoxCollider collider = root.AddComponent<BoxCollider>();
+        collider.size = colliderSize;
+        collider.center = new Vector3(0f, colliderSize.y * 0.5f, 0f);
+        return root;
+    }
+
+    private GameObject CreateTornadoPropPart(Transform parent, PrimitiveType shape, string name,
+        Vector3 localPosition, Vector3 localScale, Material material, Quaternion localRotation = default)
+    {
+        GameObject part = GameObject.CreatePrimitive(shape);
+        part.name = name;
+        part.transform.SetParent(parent, false);
+        part.transform.localPosition = localPosition;
+        float rotationMagnitude = localRotation.x * localRotation.x + localRotation.y * localRotation.y
+            + localRotation.z * localRotation.z + localRotation.w * localRotation.w;
+        part.transform.localRotation = rotationMagnitude < 0.0001f ? Quaternion.identity : localRotation;
+        part.transform.localScale = localScale;
+        Collider childCollider = part.GetComponent<Collider>();
+        if (childCollider != null) childCollider.enabled = false;
+        Renderer renderer = part.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            renderer.receiveShadows = true;
+        }
+        return part;
+    }
+
+    private void RegisterTornadoLooseObject(Transform item, PrototypeInteractable preparationTask)
+    {
+        if (item == null) return;
+        tornadoLooseObjects.Add(item);
+        tornadoLooseObjectHomes.Add(item.position);
+        tornadoLooseObjectHomeRotations.Add(item.rotation);
+        tornadoLooseObjectVelocities.Add(Vector3.zero);
+        tornadoLooseObjectPreparationTasks.Add(preparationTask);
+    }
+
+    private void BuildTornadoVfx()
+    {
+        tornadoVfxRoot = new GameObject("Hortum VFX - Dönen Hacimli Toz ve Moloz Sütunu");
+        tornadoVfxRoot.transform.position = new Vector3(0f, 0f, 20f);
+        tornadoVfxRoot.SetActive(false);
+        Material dust = MakeMaterial("Hortum Toz ve Moloz Parçacığı", Color.white);
+        dust.SetOverrideTag("RenderType", "Transparent");
+        if (dust.HasProperty("_Surface")) dust.SetFloat("_Surface", 1f);
+        if (dust.HasProperty("_SrcBlend")) dust.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        if (dust.HasProperty("_DstBlend")) dust.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        if (dust.HasProperty("_ZWrite")) dust.SetInt("_ZWrite", 0);
+        dust.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        dust.EnableKeyword("_ALPHABLEND_ON");
+        dust.renderQueue = 3000;
+        Texture2D softParticle = Application.isPlaying ? CreateTornadoParticleTexture() : Texture2D.whiteTexture;
+        if (dust.HasProperty("_BaseMap")) dust.SetTexture("_BaseMap", softParticle);
+        if (dust.HasProperty("_MainTex")) dust.SetTexture("_MainTex", softParticle);
+
+        // Six independently noisy orbital bands create a ragged, rotating funnel; no cone mesh is used.
+        for (int ring = 0; ring < 6; ring++)
+        {
+            GameObject ringObject = new GameObject("Dönen Hacimli Toz Bandı " + (ring + 1));
+            ringObject.transform.SetParent(tornadoVfxRoot.transform, false);
+            ringObject.transform.localPosition = new Vector3(0f, 0.75f + ring * 2.05f, 0f);
+            ParticleSystem ps = ringObject.AddComponent<ParticleSystem>();
+            var main = ps.main;
+            main.playOnAwake = true; main.loop = true; main.duration = 5f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(2.2f, 4.2f);
+            main.startSpeed = 0f; main.startSize = new ParticleSystem.MinMaxCurve(0.6f, 1.65f);
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.28f, 0.31f, 0.32f, 0.32f), new Color(0.55f, 0.52f, 0.46f, 0.72f));
+            main.maxParticles = 170; main.simulationSpace = ParticleSystemSimulationSpace.Local;
+            var emission = ps.emission; emission.rateOverTime = 27f;
+            var shape = ps.shape; shape.shapeType = ParticleSystemShapeType.Circle;
+            shape.rotation = new Vector3(90f, 0f, 0f);
+            shape.radius = Mathf.Lerp(0.52f, 3.15f, ring / 5f); shape.radiusThickness = 0.08f;
+            var vel = ps.velocityOverLifetime; vel.enabled = true;
+            // Unity requires x/y/z velocity curves to use the same mode. Keep all three
+            // as constants; turbulence and orbital motion provide the natural variation.
+            vel.x = new ParticleSystem.MinMaxCurve(0f);
+            vel.y = new ParticleSystem.MinMaxCurve(1.5f + ring * 0.12f);
+            vel.z = new ParticleSystem.MinMaxCurve(0f);
+            vel.orbitalX = new ParticleSystem.MinMaxCurve(0f);
+            vel.orbitalY = new ParticleSystem.MinMaxCurve(2.4f + ring * 0.32f);
+            vel.orbitalZ = new ParticleSystem.MinMaxCurve(0f);
+            var noise = ps.noise; noise.enabled = true; noise.strength = new ParticleSystem.MinMaxCurve(0.55f, 1.15f); noise.frequency = 0.36f; noise.scrollSpeed = 0.8f; noise.damping = true;
+            var size = ps.sizeOverLifetime; size.enabled = true;
+            size.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(new Keyframe(0f, 0.35f), new Keyframe(0.38f, 1f), new Keyframe(1f, 0.22f)));
+            ParticleSystemRenderer renderer = ps.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.Billboard; renderer.sharedMaterial = dust;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; renderer.receiveShadows = false;
+        }
+
+        GameObject debrisObject = new GameObject("Yükselen Yaprak ve Hafif Moloz");
+        debrisObject.transform.SetParent(tornadoVfxRoot.transform, false);
+        debrisObject.transform.localPosition = new Vector3(0f, 0.7f, 0f);
+        tornadoDebris = debrisObject.AddComponent<ParticleSystem>();
+        var debrisMain = tornadoDebris.main;
+        debrisMain.playOnAwake = true; debrisMain.loop = true; debrisMain.duration = 4f;
+        debrisMain.startLifetime = new ParticleSystem.MinMaxCurve(1.1f, 2.7f);
+        debrisMain.startSpeed = 0f; debrisMain.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.48f);
+        debrisMain.startColor = new ParticleSystem.MinMaxGradient(new Color(0.18f, 0.19f, 0.17f, 0.82f), new Color(0.4f, 0.34f, 0.27f, 0.9f));
+        debrisMain.maxParticles = 300; debrisMain.simulationSpace = ParticleSystemSimulationSpace.Local;
+        var debrisEmission = tornadoDebris.emission; debrisEmission.rateOverTime = 38f;
+        var debrisShape = tornadoDebris.shape; debrisShape.shapeType = ParticleSystemShapeType.Circle;
+        debrisShape.rotation = new Vector3(90f, 0f, 0f); debrisShape.radius = 2.55f; debrisShape.radiusThickness = 0.08f;
+        var debrisVelocity = tornadoDebris.velocityOverLifetime; debrisVelocity.enabled = true;
+        debrisVelocity.x = new ParticleSystem.MinMaxCurve(0f);
+        debrisVelocity.y = new ParticleSystem.MinMaxCurve(2.4f);
+        debrisVelocity.z = new ParticleSystem.MinMaxCurve(0f);
+        debrisVelocity.orbitalX = new ParticleSystem.MinMaxCurve(0f);
+        debrisVelocity.orbitalY = new ParticleSystem.MinMaxCurve(7f);
+        debrisVelocity.orbitalZ = new ParticleSystem.MinMaxCurve(0f);
+        var debrisNoise = tornadoDebris.noise; debrisNoise.enabled = true; debrisNoise.strength = new ParticleSystem.MinMaxCurve(0.35f, 0.85f); debrisNoise.frequency = 0.65f;
+        var debrisRenderer = tornadoDebris.GetComponent<ParticleSystemRenderer>();
+        debrisRenderer.renderMode = ParticleSystemRenderMode.Billboard; debrisRenderer.sharedMaterial = dust;
+        debrisRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; debrisRenderer.receiveShadows = false;
+
+        GameObject groundDustObject = new GameObject("Yerde Genişleyen Hortum Tozu");
+        groundDustObject.transform.SetParent(tornadoVfxRoot.transform, false);
+        groundDustObject.transform.localPosition = new Vector3(0f, 0.18f, 0f);
+        tornadoFunnel = groundDustObject.AddComponent<ParticleSystem>();
+        var dustMain = tornadoFunnel.main; dustMain.playOnAwake = true; dustMain.loop = true; dustMain.startLifetime = new ParticleSystem.MinMaxCurve(2.4f, 4.6f); dustMain.startSpeed = 0f; dustMain.startSize = new ParticleSystem.MinMaxCurve(1.4f, 3.6f); dustMain.startColor = new Color(0.40f, 0.38f, 0.34f, 0.52f); dustMain.maxParticles = 160;
+        var dustEmit = tornadoFunnel.emission; dustEmit.rateOverTime = 20f;
+        var dustShape = tornadoFunnel.shape; dustShape.shapeType = ParticleSystemShapeType.Circle; dustShape.rotation = new Vector3(90f, 0f, 0f); dustShape.radius = 2.35f; dustShape.radiusThickness = 0.06f;
+        var dustVel = tornadoFunnel.velocityOverLifetime; dustVel.enabled = true;
+        dustVel.x = new ParticleSystem.MinMaxCurve(0f);
+        dustVel.y = new ParticleSystem.MinMaxCurve(0.65f);
+        dustVel.z = new ParticleSystem.MinMaxCurve(0f);
+        dustVel.orbitalX = new ParticleSystem.MinMaxCurve(0f);
+        dustVel.orbitalY = new ParticleSystem.MinMaxCurve(4.4f);
+        dustVel.orbitalZ = new ParticleSystem.MinMaxCurve(0f);
+        var dustRenderer = tornadoFunnel.GetComponent<ParticleSystemRenderer>(); dustRenderer.sharedMaterial = dust;
+        tornadoCoreLight = tornadoVfxRoot.AddComponent<Light>(); tornadoCoreLight.type = LightType.Point; tornadoCoreLight.color = new Color(0.56f, 0.51f, 0.43f); tornadoCoreLight.range = 7f; tornadoCoreLight.intensity = 0.6f; tornadoCoreLight.shadows = LightShadows.None;
+    }
+
+    private Texture2D CreateTornadoParticleTexture()
+    {
+        tornadoParticleTexture = new Texture2D(64, 64, TextureFormat.RGBA32, false, true);
+        tornadoParticleTexture.name = "Yumuşak Hortum Toz Parçacığı";
+        tornadoParticleTexture.wrapMode = TextureWrapMode.Clamp;
+        tornadoParticleTexture.filterMode = FilterMode.Bilinear;
+        Color32[] pixels = new Color32[64 * 64];
+        for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++)
+        {
+            float dx = (x + 0.5f - 32f) / 32f;
+            float dy = (y + 0.5f - 32f) / 32f;
+            float distance = Mathf.Sqrt(dx * dx + dy * dy);
+            float alpha = Mathf.Pow(Mathf.Clamp01(1f - distance), 1.8f) * 0.82f;
+            byte a = (byte)Mathf.RoundToInt(alpha * 255f);
+            pixels[y * 64 + x] = new Color32(255, 255, 255, a);
+        }
+        tornadoParticleTexture.SetPixels32(pixels);
+        tornadoParticleTexture.Apply(false, true);
+        return tornadoParticleTexture;
+    }
+
+    public void BeginTornadoVisual()
+    {
+        if (tornadoVfxRoot != null) tornadoVfxRoot.SetActive(true);
+        RenderSettings.fog = true;
+    }
+
+    public void UpdateTornadoVisual(float elapsed, float duration)
+    {
+        if (tornadoVfxRoot == null) return;
+        float progress = Mathf.Clamp01(elapsed / Mathf.Max(0.1f, duration));
+        Vector3 routeStart = new Vector3(-27f, 0f, 5.8f);
+        Vector3 routeEnd = new Vector3(27f, 0f, 5.8f);
+        tornadoVfxRoot.transform.position = Vector3.Lerp(routeStart, routeEnd, progress);
+        float darkening = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / 5.5f));
+        if (tornadoCoreLight != null) tornadoCoreLight.intensity = 0.45f + Mathf.PerlinNoise(Time.time * 1.7f, 3.2f) * 0.7f;
+        if (tornadoSun != null) tornadoSun.intensity = Mathf.Lerp(tornadoOriginalSunIntensity, 0.16f, darkening);
+        RenderSettings.ambientIntensity = Mathf.Lerp(tornadoOriginalAmbientIntensity, 0.32f, darkening);
+        if (tornadoRuntimeSkybox != null && tornadoSkyboxHasExposure)
+            tornadoRuntimeSkybox.SetFloat("_Exposure", Mathf.Lerp(tornadoOriginalSkyboxExposure, 0.22f, darkening));
+        RenderSettings.fogDensity = Mathf.Lerp(0.0015f, 0.0065f, Mathf.Clamp01(elapsed / 6f));
+        RenderSettings.fogColor = Color.Lerp(new Color32(105, 111, 116, 255), new Color32(63, 68, 72, 255), progress);
+        for (int i = 0; i < tornadoLooseObjects.Count; i++)
+            if (tornadoLooseObjects[i] != null
+                && (tornadoLooseObjectPreparationTasks[i] == null || !tornadoLooseObjectPreparationTasks[i].IsComplete))
+            {
+                Transform item = tornadoLooseObjects[i];
+                Vector3 position = item.position;
+                Vector3 toVortex = tornadoVfxRoot.transform.position - position;
+                toVortex.y = 0f;
+                float distance = toVortex.magnitude;
+                float influence = 1f - Mathf.InverseLerp(3.5f, 10f, distance);
+                Vector3 velocity = tornadoLooseObjectVelocities[i];
+                if (influence <= 0f && velocity.sqrMagnitude < 0.0025f)
+                    continue;
+                if (influence > 0f)
+                {
+                    Vector3 toward = distance > 0.01f ? toVortex / distance : Vector3.right;
+                    Vector3 tangent = new Vector3(-toward.z, 0f, toward.x) * ((i & 1) == 0 ? 1f : -1f);
+                    float gust = 0.78f + 0.22f * Mathf.Sin(elapsed * 3.3f + i * 1.37f);
+                    velocity += (toward * 3.8f + tangent * 6.2f + Vector3.up * 4.6f) * (influence * gust * Time.deltaTime);
+                }
+                velocity += Vector3.down * (2.8f * Time.deltaTime);
+                velocity *= Mathf.Exp(-0.18f * Time.deltaTime);
+                velocity = Vector3.ClampMagnitude(velocity, 8f);
+                position += velocity * Time.deltaTime;
+                if (position.y < 0.015f)
+                {
+                    position.y = 0.015f;
+                    velocity.y = Mathf.Abs(velocity.y) * 0.22f;
+                    velocity.x *= 0.82f;
+                    velocity.z *= 0.82f;
+                }
+                item.position = position;
+                item.rotation = item.rotation * Quaternion.Euler(
+                    velocity.z * 22f * Time.deltaTime,
+                    (14f + influence * 220f) * Time.deltaTime,
+                    -velocity.x * 22f * Time.deltaTime);
+                tornadoLooseObjectVelocities[i] = velocity;
+            }
+    }
+
+    public void BeginTornadoDeparture()
+    {
+        if (tornadoVfxRoot == null) return;
+        ParticleSystem[] systems = tornadoVfxRoot.GetComponentsInChildren<ParticleSystem>(true);
+        for (int i = 0; i < systems.Length; i++)
+            systems[i].Stop(false, ParticleSystemStopBehavior.StopEmitting);
+    }
+
+    public void UpdateTornadoDeparture(float elapsed, float duration)
+    {
+        if (tornadoVfxRoot == null) return;
+        float progress = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / Mathf.Max(0.1f, duration)));
+        tornadoVfxRoot.transform.position = Vector3.Lerp(new Vector3(27f, 0f, 5.8f), new Vector3(45f, 0f, 5.8f), progress);
+        float stormLook = 1f - progress;
+        if (tornadoCoreLight != null)
+            tornadoCoreLight.intensity = Mathf.Lerp(0f, 0.45f + Mathf.PerlinNoise(Time.time * 1.7f, 3.2f) * 0.7f, stormLook);
+        if (tornadoSun != null)
+            tornadoSun.intensity = Mathf.Lerp(tornadoOriginalSunIntensity, 0.16f, stormLook);
+        RenderSettings.ambientIntensity = Mathf.Lerp(tornadoOriginalAmbientIntensity, 0.32f, stormLook);
+        if (tornadoRuntimeSkybox != null && tornadoSkyboxHasExposure)
+            tornadoRuntimeSkybox.SetFloat("_Exposure", Mathf.Lerp(tornadoOriginalSkyboxExposure, 0.22f, stormLook));
+        RenderSettings.fogDensity = Mathf.Lerp(tornadoOriginalFogDensity, 0.0065f, stormLook);
+        RenderSettings.fogColor = Color.Lerp(tornadoOriginalFogColor, new Color32(63, 68, 72, 255), stormLook);
+
+        // Airborne props keep falling while the funnel moves away; they are not snapped home.
+        for (int i = 0; i < tornadoLooseObjects.Count; i++)
+        {
+            Transform item = tornadoLooseObjects[i];
+            if (item == null || tornadoLooseObjectPreparationTasks[i] != null
+                && tornadoLooseObjectPreparationTasks[i].IsComplete)
+                continue;
+            Vector3 velocity = tornadoLooseObjectVelocities[i];
+            if (velocity.sqrMagnitude < 0.0025f) continue;
+            velocity += Vector3.down * (2.8f * Time.deltaTime);
+            velocity *= Mathf.Exp(-0.55f * Time.deltaTime);
+            Vector3 position = item.position + velocity * Time.deltaTime;
+            if (position.y < 0.015f)
+            {
+                position.y = 0.015f;
+                velocity.y = 0f;
+                velocity.x *= 0.76f;
+                velocity.z *= 0.76f;
+            }
+            item.position = position;
+            item.rotation = item.rotation * Quaternion.Euler(velocity.z * 12f * Time.deltaTime,
+                velocity.magnitude * 14f * Time.deltaTime, -velocity.x * 12f * Time.deltaTime);
+            tornadoLooseObjectVelocities[i] = velocity;
+        }
+    }
+
+    public void EndTornadoVisual()
+    {
+        if (tornadoVfxRoot != null) tornadoVfxRoot.SetActive(false);
+        if (tornadoSun != null) tornadoSun.intensity = tornadoOriginalSunIntensity;
+        RenderSettings.ambientIntensity = tornadoOriginalAmbientIntensity;
+        RenderSettings.ambientMode = tornadoOriginalAmbientMode;
+        RenderSettings.ambientSkyColor = tornadoOriginalAmbientSkyColor;
+        RenderSettings.ambientEquatorColor = tornadoOriginalAmbientEquatorColor;
+        RenderSettings.ambientGroundColor = tornadoOriginalAmbientGroundColor;
+        if (tornadoRuntimeSkybox != null)
+        {
+            RenderSettings.skybox = tornadoOriginalSkybox;
+            Destroy(tornadoRuntimeSkybox);
+            tornadoRuntimeSkybox = null;
+        }
+        RenderSettings.fog = tornadoOriginalFogEnabled;
+        RenderSettings.fogMode = tornadoOriginalFogMode;
+        RenderSettings.fogDensity = tornadoOriginalFogDensity;
+        RenderSettings.fogColor = tornadoOriginalFogColor;
+        foreach (GameObject damage in tornadoDamageProps) if (damage != null) damage.SetActive(true);
+        if (tornadoResidentAnimator != null)
+        {
+            if (tornadoResidentPoseRoutine != null) StopCoroutine(tornadoResidentPoseRoutine);
+            tornadoResidentPoseRoutine = StartCoroutine(ApplyTornadoResidentPose());
+        }
+    }
+
+    private IEnumerator ApplyTornadoResidentPose()
+    {
+        // Stop the mismatched death clip from twisting the civilian's feet away from the
+        // body. Lay the intact civilian rig face-up, then ground its whole mesh.
+        yield return null;
+        if (tornadoResidentAnimator == null)
+            yield break;
+        tornadoResidentAnimator.applyRootMotion = false;
+        tornadoResidentAnimator.speed = 0f;
+        tornadoResidentAnimator.enabled = false;
+        if (tornadoResidentModelRoot != null)
+            tornadoResidentModelRoot.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+        GroundTornadoResidentModel();
+        tornadoResidentPoseRoutine = null;
+    }
+
+    private void GroundTornadoResidentModel()
+    {
+        if (tornadoResidentModelRoot == null || tornadoResidentAnimator == null)
+            return;
+
+        Renderer[] renderers = tornadoResidentModelRoot.GetComponentsInChildren<Renderer>(true);
+        bool found = false;
+        Bounds bounds = new Bounds(tornadoResidentModelRoot.position, Vector3.zero);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] == null)
+                continue;
+            if (!found)
+            {
+                bounds = renderers[i].bounds;
+                found = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+        }
+
+        if (found)
+        {
+            float floorY = tornadoResidentAnimator.transform.root.position.y + 0.015f;
+            tornadoResidentModelRoot.position += Vector3.up * (floorY - bounds.min.y);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (tornadoRuntimeSkybox != null)
+        {
+            RenderSettings.skybox = tornadoOriginalSkybox;
+            if (Application.isPlaying) Destroy(tornadoRuntimeSkybox);
+            else DestroyImmediate(tornadoRuntimeSkybox);
+        }
+        if (tornadoParticleTexture != null)
+        {
+            if (Application.isPlaying) Destroy(tornadoParticleTexture);
+            else DestroyImmediate(tornadoParticleTexture);
+        }
     }
 
     private void BuildStormWorld()

@@ -444,13 +444,17 @@ public sealed class PrototypeUI : MonoBehaviour
         bool landslide = disaster == GameManager.DisasterType.Landslide;
         bool wildfire = disaster == GameManager.DisasterType.Wildfire;
         bool storm = disaster == GameManager.DisasterType.Storm;
+        bool tornado = disaster == GameManager.DisasterType.Tornado;
         introProvinceLabel.text = selected.name + "  •  PLAKA " + selected.PlateLabel + "  /  EĞİTİM TATBİKATI";
-        introScenarioTitle.text = flood ? "Sel ve taşkın: evden yüksek ve güvenli alana"
+        introScenarioTitle.text = tornado ? "Hortum: hazırlık yap, iç odada korun ve güvenle yardım et"
+            : flood ? "Sel ve taşkın: evden yüksek ve güvenli alana"
             : landslide ? "Heyelan: yamaçtan yana doğru güvenli alana"
             : wildfire ? "Orman yangını: dumanı bildir, güvenli alana tahliye ol"
             : storm ? "Fırtına: dışarıdaki eşyaları sabitle, sağlam yapıda korun"
             : selected.trainingScenarioTitle;
-        introScenarioInfo.text = flood
+        introScenarioInfo.text = tornado
+            ? "Hortum uyarısı öncesinde ilk yardım setini ve acil çantayı pencerelerden uzak iç bölüme taşı; bahçe sandalyesi ve masasını eve al.\n\nHORTUM UYARISI – GÜVENLİ ALANA GEÇİN! Hortumun mahalle yolundan geçişini güvenli iç bölümde bekle; başını ve boynunu koru, resmî güvenli uyarısı gelene kadar çıkma.\n\nHortum sonrasında hasarlı yapılar ve kopmuş hatlar için güvenli mesafeden kontrol yap; 112'ye bilgi ver ve tehlikesiz biçimde yardım bekleyen kişiyi yönlendir.\n\nBu, il için tehlike tahmini değil; afet farkındalık tatbikatıdır."
+            : flood
             ? "Taşkın uyarısını izle, değerli eşyaları ve ilaçları yukarı kaldır; su basma riski varsa elektriği güvenli biçimde kes.\nSu yükselirken araca binme veya akıntıya girme; evin üst katına ya da belirlenmiş yüksek alana çık.\nSu çekilmeden geri dönme; kirli suya ve elektrik hatlarına yaklaşma, resmî duyuruları takip et.\n\nBu, il için tehlike tahmini değil; afet farkındalık tatbikatıdır."
             : landslide
             ? "Yağış sonrası yamaçta yeni çatlak, su sızıntısı, eğilen ağaç/direk veya alışılmadık sesleri fark edersen bölgeden uzaklaş ve 112'ye bildir.\nHeyelan başlarsa akış hattına yaklaşma; mümkünse hareket yönüne dik biçimde yan tarafa ve daha güvenli yüksek zemine ilerle. Vadiye, dere yatağına ve heyelan alanına girme.\nTehlike geçince geri dönme; resmî ekiplerin ve duyuruların yönlendirmesini bekle.\n\nBu, il için tehlike tahmini değil; afet farkındalık tatbikatıdır."
@@ -493,7 +497,7 @@ public sealed class PrototypeUI : MonoBehaviour
             bool wildfire = disaster == GameManager.DisasterType.Wildfire;
             bool storm = disaster == GameManager.DisasterType.Storm;
             provinceHoverText.text = "ÖNİZLEME • " + province.name + " / " + province.PlateLabel
-                + " • AFET: " + (flood ? "SEL / TAŞKIN" : landslide ? "HEYELAN" : wildfire ? "ORMAN YANGINI" : storm ? "FIRTINA" : "DEPREM");
+                + " • AFET: " + (disaster == GameManager.DisasterType.Tornado ? "HORTUM" : flood ? "SEL / TAŞKIN" : landslide ? "HEYELAN" : wildfire ? "ORMAN YANGINI" : storm ? "FIRTINA" : "DEPREM");
             DisplayProvinceInfo(plateCode, false);
         }
     }
@@ -521,15 +525,19 @@ public sealed class PrototypeUI : MonoBehaviour
         bool landslide = disaster == GameManager.DisasterType.Landslide;
         bool wildfire = disaster == GameManager.DisasterType.Wildfire;
         bool storm = disaster == GameManager.DisasterType.Storm;
+        bool tornado = disaster == GameManager.DisasterType.Tornado;
         provinceSelectedText.text = province.name + "  •  PLAKA " + province.PlateLabel;
         bool completed = ProvinceManager.Instance.IsScenarioCompleted(plateCode, disaster);
-        provinceScenarioText.text = "Afet türü: " + (flood ? "Sel ve taşkın" : landslide ? "Heyelan" : wildfire ? "Orman yangını" : storm ? "Fırtına" : "Deprem")
-            + "\n" + (flood ? "Sel ve taşkın: güvenli tahliye"
+        provinceScenarioText.text = "Afet türü: " + (tornado ? "Hortum" : flood ? "Sel ve taşkın" : landslide ? "Heyelan" : wildfire ? "Orman yangını" : storm ? "Fırtına" : "Deprem")
+            + "\n" + (tornado ? "Hortum: hazırlık yap, pencerelerden uzak iç bölüme sığın, hasarı bildir"
+                : flood ? "Sel ve taşkın: güvenli tahliye"
                 : landslide ? "Heyelan: işaretleri fark et, akış hattından dik yönde uzaklaş"
                 : wildfire ? "Orman yangını: dumanı bildir, açık alana tahliye ol"
                 : storm ? "Fırtına: eşyaları sabitle, iç odada korun ve tehlikeyi bildir"
                 : province.trainingScenarioTitle)
-            + (completed ? "\n\n✓ Bu afet türü tamamlandı — ilgili iller gri; tekrar seçilebilir." : "\n\n" + (flood
+            + (completed ? "\n\n✓ Bu afet türü tamamlandı — ilgili iller gri; tekrar seçilebilir." : "\n\n" + (tornado
+                ? "Hortum farkındalık tatbikatı için Konya eğitim ili; resmî risk sınıflaması değildir."
+                : flood
                 ? "Taşkın tehlikesine ve geçmiş taşkın olaylarına göre seçilmiş eğitim ili."
                 : landslide ? "Heyelan farkındalık tatbikatı için seçilmiş eğitim ili; resmî risk sınıflaması değildir."
                 : wildfire ? "Orman yangını farkındalık tatbikatı için seçilmiş eğitim ili; resmî risk sınıflaması değildir."
@@ -583,7 +591,7 @@ public sealed class PrototypeUI : MonoBehaviour
         string fullTasks;
         if (phase.StartsWith("DEPREM ÖNCESİ"))
             fullTasks = tasks;
-        else if (phase.StartsWith("SEL") || phase.StartsWith("ORMAN YANGINI") || phase.StartsWith("FIRTINA"))
+        else if (phase.StartsWith("SEL") || phase.StartsWith("ORMAN YANGINI") || phase.StartsWith("FIRTINA") || phase.StartsWith("HORTUM"))
             fullTasks = tasks;
         else if (phase.StartsWith("DEPREM ANI"))
         {
@@ -617,7 +625,8 @@ public sealed class PrototypeUI : MonoBehaviour
         PrototypeScenario currentScenario = owner != null ? owner.Scenario : null;
         if (preparationCountdown > 0.05f && currentScenario != null && !currentScenario.IsLandslideScenario)
         {
-            string disasterName = currentScenario.IsStormScenario ? "FIRTINA "
+            string disasterName = currentScenario.IsTornadoScenario ? "HORTUM "
+                : currentScenario.IsStormScenario ? "FIRTINA "
                 : currentScenario.IsWildfireScenario ? "ORMAN YANGINI "
                 : currentScenario.IsFloodScenario ? "SEL " : "DEPREM ";
             quakeStartHint.text = disasterName + Mathf.CeilToInt(preparationCountdown) + " SANİYE İÇİNDE BAŞLIYOR";

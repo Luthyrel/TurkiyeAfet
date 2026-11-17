@@ -19,7 +19,8 @@ public class GameManager : MonoBehaviour
         Flood,
         Landslide,
         Wildfire,
-        Storm
+        Storm,
+        Tornado
     }
 
     public GameState CurrentState { get; private set; } = GameState.MainMenu;
