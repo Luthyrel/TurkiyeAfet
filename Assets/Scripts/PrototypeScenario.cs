@@ -670,6 +670,7 @@ public sealed class PrototypeScenario : MonoBehaviour
 
             target.OpenExitDoor();
             exitDoorOpened = true;
+            bootstrap.LoadEarthquakeOutdoorEnvironmentOnFirstDoorOpen();
             PrototypeAudio.PlayDoorOpen();
             bootstrap.ShowNotice("Kapı açıldı. Gaz ve pencere görevlerini tamamlayıp toplanma alanına ilerle.");
             RefreshHud();

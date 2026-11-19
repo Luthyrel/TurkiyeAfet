@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -39,7 +40,13 @@ internal sealed class PrototypeMapAuthoringWindow : EditorWindow
         {
             GameObject preview = GameObject.Find(PreviewRootName);
             int selectedDisaster = Mathf.Clamp(EditorPrefs.GetInt(SelectedDisasterKey, 0), 0, DisasterLabels.Length - 1);
-            int previewDisaster = EditorPrefs.GetInt(PreviewDisasterKey, -1);
+            int previewDisaster = preview != null ? EditorPrefs.GetInt(PreviewDisasterKey, -1) : -1;
+            if (preview != null)
+            {
+                PrototypeMapPreviewInfo previewInfo = preview.GetComponent<PrototypeMapPreviewInfo>();
+                if (previewInfo != null)
+                    previewDisaster = (int)previewInfo.DisasterType;
+            }
             selectedDisaster = EditorGUILayout.Popup("Önizlenecek afet", selectedDisaster, DisasterLabels);
             EditorPrefs.SetInt(SelectedDisasterKey, selectedDisaster);
             bool samePreviewIsReady = preview != null && previewDisaster == selectedDisaster;
@@ -53,6 +60,15 @@ internal sealed class PrototypeMapAuthoringWindow : EditorWindow
                         : "Önizlemeyi seçilen afetle değiştir";
                     if (GUILayout.Button(buttonLabel, GUILayout.Height(32f)))
                         GeneratePreview(selectedDisaster);
+                }
+
+                using (new EditorGUI.DisabledScope(isGeneratingPreview || preview == null))
+                {
+                    if (GUILayout.Button("Değişiklikleri Play Mode ve Build için kaydet", GUILayout.Height(32f)))
+                    {
+                        int disasterToSave = previewDisaster >= 0 ? previewDisaster : selectedDisaster;
+                        SavePreviewForPlayModeAndBuild(preview, (GameManager.DisasterType)disasterToSave);
+                    }
                 }
 
                 if (preview != null && GUILayout.Button("Önizlemeyi kaldır"))
@@ -76,8 +92,8 @@ internal sealed class PrototypeMapAuthoringWindow : EditorWindow
             EditorGUILayout.HelpBox(
                 "1. Afeti seçip önizlemeyi oluştur.\n" +
                 "2. Asseti Project'ten Scene'e sürükle, konumlandır ve yerleşim alanına al.\n" +
-                "3. Ctrl+S ile sahneyi kaydet.\n\n" +
-                "Önizleme Play Mode'da kaldırılır; yerleşim alanındaki assetler kalıcıdır.",
+                "3. Önizlemeyi düzenle, ardından Play Mode ve Build için kaydet düğmesine bas.\n\n" +
+                "Kaydedilen önizleme, aynı afet seçildiğinde Play Mode ve build sırasında kullanılır.",
                 MessageType.Info);
 
             GameObject placementRoot = FindPlacementRoot();
@@ -104,6 +120,14 @@ internal sealed class PrototypeMapAuthoringWindow : EditorWindow
             return;
         }
 
+        GameObject oldPreview = GameObject.Find(PreviewRootName);
+        if (oldPreview != null && !EditorUtility.DisplayDialog(
+                "Önizlemeyi değiştir",
+                "Mevcut önizlemeyi değiştirmek, üzerindeki konum ve materyal düzenlemelerini kaldırır. Devam etmeden önce Play Mode ve Build için kaydet.",
+                "Değiştir",
+                "İptal"))
+            return;
+
         isGeneratingPreview = true;
         bool generated;
         try
@@ -124,6 +148,57 @@ internal sealed class PrototypeMapAuthoringWindow : EditorWindow
         if (placementRoot != null)
             Selection.activeGameObject = placementRoot;
         SceneView.lastActiveSceneView?.Repaint();
+    }
+
+    private static void SavePreviewForPlayModeAndBuild(GameObject preview, GameManager.DisasterType disasterType)
+    {
+        if (preview == null)
+            return;
+
+        Scene scene = SceneManager.GetActiveScene();
+        if (string.IsNullOrEmpty(scene.path))
+        {
+            EditorUtility.DisplayDialog("Harita düzenleme", "Önce sahneyi kaydet, ardından tekrar dene.", "Tamam");
+            return;
+        }
+
+        preview.tag = "Untagged";
+        PrototypeMapPreviewInfo previewInfo = preview.GetComponent<PrototypeMapPreviewInfo>();
+        if (previewInfo == null)
+            previewInfo = Undo.AddComponent<PrototypeMapPreviewInfo>(preview);
+        previewInfo.DisasterType = disasterType;
+        EditorUtility.SetDirty(previewInfo);
+        EditorUtility.SetDirty(preview);
+
+        List<EditorBuildSettingsScene> buildScenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
+        bool sceneFound = false;
+        for (int i = 0; i < buildScenes.Count; i++)
+        {
+            if (buildScenes[i].path != scene.path)
+                continue;
+
+            if (!buildScenes[i].enabled)
+                buildScenes[i] = new EditorBuildSettingsScene(scene.path, true);
+            sceneFound = true;
+            break;
+        }
+
+        if (!sceneFound)
+            buildScenes.Add(new EditorBuildSettingsScene(scene.path, true));
+        EditorBuildSettings.scenes = buildScenes.ToArray();
+        AssetDatabase.SaveAssets();
+        EditorSceneManager.MarkSceneDirty(scene);
+        bool saved = EditorSceneManager.SaveScene(scene);
+        if (!saved)
+        {
+            EditorUtility.DisplayDialog("Harita kaydedilemedi", "Sahne diske kaydedilemedi. Console'u kontrol et.", "Tamam");
+            return;
+        }
+
+        EditorUtility.DisplayDialog(
+            "Harita kaydedildi",
+            disasterType + " önizlemesi Play Mode ve build için kaydedildi. Yeni build alırken bu sahnenin build listesinde olduğundan emin ol.",
+            "Tamam");
     }
 
     private static void RemovePreview()

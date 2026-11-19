@@ -39,6 +39,10 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private bool paused;
     private Vector3 safeTablePosition;
     private GameManager.DisasterType worldDisasterType;
+    private GameObject earthquakeOutdoorRoot;
+    private GameObject earthquakePlacedAssetsRoot;
+    private GameObject earthquakeGeneratedOutdoorRoot;
+    private bool earthquakeOutdoorEnvironmentLoaded;
     private Transform floodWater;
     private Vector3 floodSafePosition;
     private Vector3 landslideSafePosition;
@@ -215,23 +219,35 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         GameObject editingPreview = GameObject.Find("Oyun Haritası - Düzenleme Önizlemesi");
         Dictionary<string, AuthoredMapObjectState> authoredMap = null;
         HashSet<GameObject> rootsBeforeRuntimeWorld = null;
-        if (worldDisasterType == GameManager.DisasterType.Earthquake && editingPreview != null)
+        if (editingPreview != null)
         {
-            authoredMap = new Dictionary<string, AuthoredMapObjectState>();
-            for (int i = 0; i < editingPreview.transform.childCount; i++)
-                CaptureAuthoredMapObject(editingPreview.transform.GetChild(i), "", authoredMap);
+            PrototypeMapPreviewInfo previewInfo = editingPreview.GetComponent<PrototypeMapPreviewInfo>();
+            GameManager.DisasterType previewDisasterType = previewInfo != null
+                ? previewInfo.DisasterType : GameManager.DisasterType.Earthquake;
+            if (previewDisasterType == worldDisasterType)
+            {
+                authoredMap = new Dictionary<string, AuthoredMapObjectState>();
+                for (int i = 0; i < editingPreview.transform.childCount; i++)
+                    CaptureAuthoredMapObject(editingPreview.transform.GetChild(i), "", authoredMap);
 
-            rootsBeforeRuntimeWorld = new HashSet<GameObject>(SceneManager.GetActiveScene().GetRootGameObjects());
-            Debug.Log("Kaydedilmiş deprem haritası düzeni bulundu: " + authoredMap.Count + " nesne.");
+                rootsBeforeRuntimeWorld = new HashSet<GameObject>(SceneManager.GetActiveScene().GetRootGameObjects());
+                Debug.Log("Kaydedilmiş " + previewDisasterType + " harita düzeni bulundu: " + authoredMap.Count + " nesne.");
+            }
         }
         if (editingPreview != null)
         {
             editingPreview.SetActive(false);
             Destroy(editingPreview);
         }
-        GameObject earthquakeTerrain = FindSceneObjectIncludingInactive("Deprem Haritası");
-        if (earthquakeTerrain != null)
-            earthquakeTerrain.SetActive(worldDisasterType == GameManager.DisasterType.Earthquake);
+        earthquakeOutdoorRoot = FindSceneObjectIncludingInactive("Deprem Haritası");
+        if (earthquakeOutdoorRoot == null)
+            earthquakeOutdoorRoot = FindSceneObjectIncludingInactive("Terrain");
+        earthquakePlacedAssetsRoot = FindSceneObjectIncludingInactive("Sahneye Yerleştirilen Harita Varlıkları");
+        earthquakeOutdoorEnvironmentLoaded = false;
+        if (earthquakeOutdoorRoot != null)
+            earthquakeOutdoorRoot.SetActive(false);
+        if (worldDisasterType == GameManager.DisasterType.Earthquake && earthquakePlacedAssetsRoot != null)
+            earthquakePlacedAssetsRoot.SetActive(false);
 
         if (ProvinceManager.Instance != null)
         {
@@ -293,8 +309,11 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                 }
             }
 
-            Debug.Log("Deprem haritası önizleme düzeni oyuna aktarıldı. Eşleşen kök nesne: " + appliedObjects + ".");
+            Debug.Log(worldDisasterType + " harita önizleme düzeni oyuna aktarıldı. Eşleşen kök nesne: " + appliedObjects + ".");
         }
+
+        if (worldDisasterType == GameManager.DisasterType.Earthquake && earthquakeGeneratedOutdoorRoot != null)
+            earthquakeGeneratedOutdoorRoot.SetActive(false);
 
         if (worldDisasterType == GameManager.DisasterType.Earthquake)
         {
@@ -397,6 +416,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         Material brassMat = MakeMaterial("Pirinç", new Color32(184, 145, 74, 255));
         Material glassMat = MakeMaterial("Cam", new Color32(108, 157, 179, 180));
         Material outsideMat = MakeMaterial("Güvenli Alan", new Color32(105, 135, 113, 255));
+        earthquakeGeneratedOutdoorRoot = new GameObject("Deprem Haritası Dış Ortamı");
 
         CreateBox("Ev Zemini", new Vector3(0f, -0.16f, 1f), new Vector3(14f, 0.32f, 11f), floorMat);
         CreateBox("Kuzey Duvarı Sol", new Vector3(-2.85f, 1.55f, 6.55f), new Vector3(8.3f, 3.1f, 0.25f), wallMat);
@@ -414,9 +434,11 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             wallMat
         );
 
-        CreateBox("Dış Güvenli Yürüyüş Alanı", new Vector3(-9.8f, -0.14f, -2.3f), new Vector3(5.8f, 0.28f, 4.5f), outsideMat);
-        CreateBox("Toplanma Alanı İşareti", new Vector3(-11.1f, 0.025f, -2.3f), new Vector3(1.3f, 0.04f, 1.4f),
+        GameObject outdoorPath = CreateBox("Dış Güvenli Yürüyüş Alanı", new Vector3(-9.8f, -0.14f, -2.3f), new Vector3(5.8f, 0.28f, 4.5f), outsideMat);
+        outdoorPath.transform.SetParent(earthquakeGeneratedOutdoorRoot.transform, true);
+        GameObject outdoorGatheringMarker = CreateBox("Toplanma Alanı İşareti", new Vector3(-11.1f, 0.025f, -2.3f), new Vector3(1.3f, 0.04f, 1.4f),
             MakeMaterial("İşaret", new Color32(237, 199, 116, 255)));
+        outdoorGatheringMarker.transform.SetParent(earthquakeGeneratedOutdoorRoot.transform, true);
 
         // Giriş çerçevesi ve açık kapı boşluğu
         CreateBox("Kapı Çerçevesi Sol", new Vector3(-6.82f, 1.05f, -3.02f), new Vector3(0.20f, 2.1f, 0.18f), trimMat);
@@ -474,6 +496,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
         GameObject previewRoot = new GameObject("Oyun Haritası - Düzenleme Önizlemesi");
         previewRoot.tag = "Untagged";
+        previewRoot.AddComponent<PrototypeMapPreviewInfo>().DisasterType = disasterType;
         GameObject previewScenarioObject = new GameObject("Harita Önizleme Senaryosu");
         HashSet<GameObject> existingRoots = new HashSet<GameObject>();
         GameObject[] rootsBeforeBuild = scene.GetRootGameObjects();
@@ -585,12 +608,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                     materialAsset.name = source.name;
                     AssetDatabase.CreateAsset(materialAsset, path);
                 }
-                else
-                {
-                    EditorUtility.CopySerialized(source, materialAsset);
-                    materialAsset.name = source.name;
-                    EditorUtility.SetDirty(materialAsset);
-                }
+                // Preserve existing saved preview materials because they may contain user texture edits.
 
                 savedBySource.Add(source, materialAsset);
                 if (!AssetDatabase.Contains(source))
@@ -4809,6 +4827,8 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     {
         GameObject nesne = new GameObject(ad);
         nesne.transform.position = konum;
+        if (earthquakeGeneratedOutdoorRoot != null)
+            nesne.transform.SetParent(earthquakeGeneratedOutdoorRoot.transform, true);
         BoxCollider collider = nesne.AddComponent<BoxCollider>();
         collider.size = boyut;
     }
@@ -4851,6 +4871,33 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     public void StartEarthquake()
     {
         scenario.StartEarthquake();
+    }
+
+    public void LoadEarthquakeOutdoorEnvironmentOnFirstDoorOpen()
+    {
+        if (worldDisasterType != GameManager.DisasterType.Earthquake || earthquakeOutdoorEnvironmentLoaded)
+            return;
+
+        if (earthquakeOutdoorRoot == null)
+            earthquakeOutdoorRoot = FindSceneObjectIncludingInactive("Deprem Haritası")
+                ?? FindSceneObjectIncludingInactive("Terrain");
+        if (earthquakePlacedAssetsRoot == null)
+            earthquakePlacedAssetsRoot = FindSceneObjectIncludingInactive("Sahneye Yerleştirilen Harita Varlıkları");
+
+        if (earthquakeOutdoorRoot == null && earthquakePlacedAssetsRoot == null)
+        {
+            Debug.LogWarning("Deprem dış ortamı bulunamadı; terrain ve yerleştirilmiş harita varlıkları yüklenemedi.");
+            return;
+        }
+
+        if (earthquakeOutdoorRoot != null)
+            earthquakeOutdoorRoot.SetActive(true);
+        if (earthquakePlacedAssetsRoot != null)
+            earthquakePlacedAssetsRoot.SetActive(true);
+        if (earthquakeGeneratedOutdoorRoot != null)
+            earthquakeGeneratedOutdoorRoot.SetActive(true);
+        earthquakeOutdoorEnvironmentLoaded = true;
+        Debug.Log("Kapı ilk kez açıldı; deprem dış ortamı yüklendi ve açık kaldı.");
     }
 
 
