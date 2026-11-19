@@ -19,6 +19,9 @@ public sealed class PrototypeUI : MonoBehaviour
     private Text phaseText;
     private Text taskText;
     private Text scoreText;
+    private Text fpsCounterText;
+    private float fpsUpdateTimer;
+    private int fpsFrameCount;
     private RectTransform hudPanelRect;
     private Text promptText;
     private Text noticeText;
@@ -85,6 +88,19 @@ public sealed class PrototypeUI : MonoBehaviour
 
     private void Update()
     {
+        if (fpsCounterText != null && hudPage != null && hudPage.activeSelf)
+        {
+            fpsFrameCount++;
+            fpsUpdateTimer += Time.unscaledDeltaTime;
+            if (fpsUpdateTimer >= 0.25f)
+            {
+                float fps = fpsFrameCount / fpsUpdateTimer;
+                fpsCounterText.text = "FPS  " + Mathf.RoundToInt(fps);
+                fpsFrameCount = 0;
+                fpsUpdateTimer = 0f;
+            }
+        }
+
         Keyboard keyboard = Keyboard.current;
         if (keyboard == null)
             return;
@@ -251,6 +267,11 @@ public sealed class PrototypeUI : MonoBehaviour
         taskText.supportRichText = true;
         scoreText = AddText(panel, "Puan", "PUAN  0", new Vector2(0.06f, 0.05f), new Vector2(0.94f, 0.21f),
             17, new Color32(255, 206, 123, 255), TextAnchor.MiddleLeft);
+
+        RectTransform fpsPanel = MakeRect(hudPage.transform, "FPS Sayacı", new Vector2(1f, 0f), new Vector2(1f, 0f),
+            new Vector2(-24f, 24f), new Vector2(130f, 38f), new Color32(10, 20, 32, 190));
+        fpsCounterText = AddText(fpsPanel, "FPS Değeri", "FPS  --", new Vector2(0.08f, 0.04f), new Vector2(0.92f, 0.96f),
+            16, new Color32(235, 248, 244, 255), TextAnchor.MiddleCenter);
 
         RectTransform prompt = MakeRect(hudPage.transform, "Etkileşim İpucu", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
             new Vector2(0f, 70f), new Vector2(800f, 54f), new Color32(10, 20, 32, 225));

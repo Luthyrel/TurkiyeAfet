@@ -107,6 +107,85 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
     public PrototypeScenario Scenario => scenario;
 
+    private sealed class AuthoredMapObjectState
+    {
+        public Vector3 LocalPosition;
+        public Quaternion LocalRotation;
+        public Vector3 LocalScale;
+        public bool Active;
+        public Material[][] RendererMaterials;
+    }
+
+    private static string GetAuthoredMapSegment(Transform item, Transform parent)
+    {
+        int sameNameIndex = 0;
+        if (parent != null)
+        {
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                Transform sibling = parent.GetChild(i);
+                if (sibling == item)
+                    break;
+                if (sibling.name == item.name)
+                    sameNameIndex++;
+            }
+        }
+
+        return item.name.Replace("/", "_") + "#" + sameNameIndex;
+    }
+
+    private static void CaptureAuthoredMapObject(
+        Transform item,
+        string parentPath,
+        Dictionary<string, AuthoredMapObjectState> states)
+    {
+        string key = string.IsNullOrEmpty(parentPath)
+            ? GetAuthoredMapSegment(item, item.parent)
+            : parentPath + "/" + GetAuthoredMapSegment(item, item.parent);
+        Renderer[] renderers = item.GetComponents<Renderer>();
+        Material[][] rendererMaterials = new Material[renderers.Length][];
+        for (int i = 0; i < renderers.Length; i++)
+            rendererMaterials[i] = renderers[i].sharedMaterials;
+
+        states[key] = new AuthoredMapObjectState
+        {
+            LocalPosition = item.localPosition,
+            LocalRotation = item.localRotation,
+            LocalScale = item.localScale,
+            Active = item.gameObject.activeSelf,
+            RendererMaterials = rendererMaterials
+        };
+
+        for (int i = 0; i < item.childCount; i++)
+            CaptureAuthoredMapObject(item.GetChild(i), key, states);
+    }
+
+    private static void ApplyAuthoredMapObject(
+        Transform item,
+        string parentPath,
+        Dictionary<string, AuthoredMapObjectState> states,
+        string rootKey = null)
+    {
+        string key = string.IsNullOrEmpty(parentPath)
+            ? (rootKey ?? GetAuthoredMapSegment(item, null))
+            : parentPath + "/" + GetAuthoredMapSegment(item, item.parent);
+        if (states.TryGetValue(key, out AuthoredMapObjectState state))
+        {
+            item.localPosition = state.LocalPosition;
+            item.localRotation = state.LocalRotation;
+            item.localScale = state.LocalScale;
+            item.gameObject.SetActive(state.Active);
+
+            Renderer[] renderers = item.GetComponents<Renderer>();
+            int rendererCount = Mathf.Min(renderers.Length, state.RendererMaterials.Length);
+            for (int i = 0; i < rendererCount; i++)
+                renderers[i].sharedMaterials = state.RendererMaterials[i];
+        }
+
+        for (int i = 0; i < item.childCount; i++)
+            ApplyAuthoredMapObject(item.GetChild(i), key, states);
+    }
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -126,18 +205,30 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
     private void Start()
     {
-#if UNITY_EDITOR
-        GameObject editingPreview = GameObject.Find("Oyun Haritası - Düzenleme Önizlemesi");
-        if (editingPreview != null)
-            Destroy(editingPreview);
-#endif
         Time.timeScale = 1f;
-        Application.targetFrameRate = 120;
         Screen.sleepTimeout = SleepTimeout.NeverSleep;
         ConfigureLighting();
 
         worldDisasterType = GameManager.Instance != null
             ? GameManager.Instance.SelectedDisaster : GameManager.DisasterType.Earthquake;
+
+        GameObject editingPreview = GameObject.Find("Oyun Haritası - Düzenleme Önizlemesi");
+        Dictionary<string, AuthoredMapObjectState> authoredMap = null;
+        HashSet<GameObject> rootsBeforeRuntimeWorld = null;
+        if (worldDisasterType == GameManager.DisasterType.Earthquake && editingPreview != null)
+        {
+            authoredMap = new Dictionary<string, AuthoredMapObjectState>();
+            for (int i = 0; i < editingPreview.transform.childCount; i++)
+                CaptureAuthoredMapObject(editingPreview.transform.GetChild(i), "", authoredMap);
+
+            rootsBeforeRuntimeWorld = new HashSet<GameObject>(SceneManager.GetActiveScene().GetRootGameObjects());
+            Debug.Log("Kaydedilmiş deprem haritası düzeni bulundu: " + authoredMap.Count + " nesne.");
+        }
+        if (editingPreview != null)
+        {
+            editingPreview.SetActive(false);
+            Destroy(editingPreview);
+        }
         GameObject earthquakeTerrain = FindSceneObjectIncludingInactive("Deprem Haritası");
         if (earthquakeTerrain != null)
             earthquakeTerrain.SetActive(worldDisasterType == GameManager.DisasterType.Earthquake);
@@ -180,6 +271,30 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             BuildTornadoWorld();
         else
             BuildWorld();
+
+        if (authoredMap != null)
+        {
+            GameObject[] runtimeRoots = SceneManager.GetActiveScene().GetRootGameObjects();
+            int appliedObjects = 0;
+            Dictionary<string, int> rootNameOrdinals = new Dictionary<string, int>();
+            for (int i = 0; i < runtimeRoots.Length; i++)
+            {
+                GameObject root = runtimeRoots[i];
+                if (root == editingPreview || rootsBeforeRuntimeWorld.Contains(root))
+                    continue;
+
+                rootNameOrdinals.TryGetValue(root.name, out int rootOrdinal);
+                rootNameOrdinals[root.name] = rootOrdinal + 1;
+                string rootKey = root.name.Replace("/", "_") + "#" + rootOrdinal;
+                if (authoredMap.ContainsKey(rootKey))
+                {
+                    ApplyAuthoredMapObject(root.transform, "", authoredMap, rootKey);
+                    appliedObjects++;
+                }
+            }
+
+            Debug.Log("Deprem haritası önizleme düzeni oyuna aktarıldı. Eşleşen kök nesne: " + appliedObjects + ".");
+        }
 
         if (worldDisasterType == GameManager.DisasterType.Earthquake)
         {
@@ -358,7 +473,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
         }
 
         GameObject previewRoot = new GameObject("Oyun Haritası - Düzenleme Önizlemesi");
-        previewRoot.tag = "EditorOnly";
+        previewRoot.tag = "Untagged";
         GameObject previewScenarioObject = new GameObject("Harita Önizleme Senaryosu");
         HashSet<GameObject> existingRoots = new HashSet<GameObject>();
         GameObject[] rootsBeforeBuild = scene.GetRootGameObjects();

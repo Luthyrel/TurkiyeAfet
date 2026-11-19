@@ -2819,7 +2819,8 @@ public sealed class PrototypeScenario : MonoBehaviour
         player.EndTableHoldSafely();
         bootstrap.SetHoldZoneVisible(false);
 
-        collapseOccurred = Random.value < CollapseChance;
+        float collapseChance = safeActionComplete ? 0f : CollapseChance;
+        collapseOccurred = Random.value < collapseChance;
         if (collapseOccurred)
         {
             PrototypeAudio.PlayCollapse();

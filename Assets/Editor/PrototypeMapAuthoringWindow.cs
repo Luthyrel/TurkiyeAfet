@@ -11,7 +11,7 @@ internal sealed class PrototypeMapAuthoringWindow : EditorWindow
     private const string EarthquakeTerrainRootName = "Deprem Haritası";
     private const string SelectedDisasterKey = "TurkiyeAfet.MapAuthoring.SelectedDisaster";
     private const string PreviewDisasterKey = "TurkiyeAfet.MapAuthoring.PreviewDisaster";
-    private static readonly string[] DisasterLabels = { "Deprem", "Sel", "Heyelan", "Orman yangını", "Fırtına" };
+    private static readonly string[] DisasterLabels = { "Deprem", "Sel", "Heyelan", "Orman yangını", "Fırtına", "Hortum" };
     private static bool isGeneratingPreview;
     private Vector2 scrollPosition;
 
