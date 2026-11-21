@@ -113,6 +113,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
     private sealed class AuthoredMapObjectState
     {
+        public GameObject SourceObject;
         public Vector3 LocalPosition;
         public Quaternion LocalRotation;
         public Vector3 LocalScale;
@@ -121,6 +122,11 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     }
 
     private static string GetAuthoredMapSegment(Transform item, Transform parent)
+    {
+        return item.name.Replace("/", "_") + "#" + GetAuthoredMapNameIndex(item, parent);
+    }
+
+    private static int GetAuthoredMapNameIndex(Transform item, Transform parent)
     {
         int sameNameIndex = 0;
         if (parent != null)
@@ -135,7 +141,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             }
         }
 
-        return item.name.Replace("/", "_") + "#" + sameNameIndex;
+        return sameNameIndex;
     }
 
     private static void CaptureAuthoredMapObject(
@@ -153,6 +159,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
 
         states[key] = new AuthoredMapObjectState
         {
+            SourceObject = item.gameObject,
             LocalPosition = item.localPosition,
             LocalRotation = item.localRotation,
             LocalScale = item.localScale,
@@ -186,8 +193,37 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                 renderers[i].sharedMaterials = state.RendererMaterials[i];
         }
 
-        for (int i = 0; i < item.childCount; i++)
-            ApplyAuthoredMapObject(item.GetChild(i), key, states);
+        if (!states.TryGetValue(key, out AuthoredMapObjectState parentState)
+            || parentState.SourceObject == null)
+            return;
+
+        Transform sourceParent = parentState.SourceObject.transform;
+        for (int sourceIndex = 0; sourceIndex < sourceParent.childCount; sourceIndex++)
+        {
+            Transform sourceChild = sourceParent.GetChild(sourceIndex);
+            int sameNameIndex = 0;
+            Transform runtimeChild = null;
+            for (int runtimeIndex = 0; runtimeIndex < item.childCount; runtimeIndex++)
+            {
+                Transform candidate = item.GetChild(runtimeIndex);
+                if (candidate.name != sourceChild.name)
+                    continue;
+                if (sameNameIndex == GetAuthoredMapNameIndex(sourceChild, sourceParent))
+                {
+                    runtimeChild = candidate;
+                    break;
+                }
+                sameNameIndex++;
+            }
+
+            if (runtimeChild == null)
+            {
+                runtimeChild = Instantiate(sourceChild.gameObject, item, false).transform;
+                runtimeChild.name = sourceChild.name;
+            }
+
+            ApplyAuthoredMapObject(runtimeChild, key, states);
+        }
     }
 
     private void Awake()
@@ -293,6 +329,7 @@ public sealed class PrototypeBootstrap : MonoBehaviour
             GameObject[] runtimeRoots = SceneManager.GetActiveScene().GetRootGameObjects();
             int appliedObjects = 0;
             Dictionary<string, int> rootNameOrdinals = new Dictionary<string, int>();
+            HashSet<string> matchedPreviewRoots = new HashSet<string>();
             for (int i = 0; i < runtimeRoots.Length; i++)
             {
                 GameObject root = runtimeRoots[i];
@@ -305,11 +342,31 @@ public sealed class PrototypeBootstrap : MonoBehaviour
                 if (authoredMap.ContainsKey(rootKey))
                 {
                     ApplyAuthoredMapObject(root.transform, "", authoredMap, rootKey);
+                    matchedPreviewRoots.Add(rootKey);
                     appliedObjects++;
                 }
             }
 
-            Debug.Log(worldDisasterType + " harita önizleme düzeni oyuna aktarıldı. Eşleşen kök nesne: " + appliedObjects + ".");
+            GameObject addedAuthoredRoot = null;
+            Dictionary<string, int> previewRootOrdinals = new Dictionary<string, int>();
+            for (int i = 0; i < editingPreview.transform.childCount; i++)
+            {
+                Transform previewRoot = editingPreview.transform.GetChild(i);
+                previewRootOrdinals.TryGetValue(previewRoot.name, out int previewOrdinal);
+                previewRootOrdinals[previewRoot.name] = previewOrdinal + 1;
+                string previewRootKey = previewRoot.name.Replace("/", "_") + "#" + previewOrdinal;
+                if (matchedPreviewRoots.Contains(previewRootKey))
+                    continue;
+
+                if (addedAuthoredRoot == null)
+                    addedAuthoredRoot = new GameObject("Oyun Haritası - Eklenen Nesneler");
+                Transform addedObject = Instantiate(previewRoot.gameObject, addedAuthoredRoot.transform, false).transform;
+                addedObject.name = previewRoot.name;
+                ApplyAuthoredMapObject(addedObject, "", authoredMap, previewRootKey);
+                appliedObjects++;
+            }
+
+            Debug.Log(worldDisasterType + " harita önizleme düzeni oyuna aktarıldı. Uygulanan veya eklenen kök nesne: " + appliedObjects + ".");
         }
 
         if (worldDisasterType == GameManager.DisasterType.Earthquake && earthquakeGeneratedOutdoorRoot != null)
